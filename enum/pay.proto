@@ -1,0 +1,24 @@
+syntax = "proto3";
+// 支付
+enum Payment {
+  Payment_UNKNOWN = 0;
+  // 支付宝
+  Alipay = 1;
+  // 微信
+  Wxpay = 2;
+}
+
+enum PaymentMethod {
+  PaymentMethod_UNKNOWN = 0;
+  H5 = 1;
+  APP = 2;
+  PC = 3;
+  Native = 4;
+  Face = 5;
+}
+
+enum Currency {
+  Currency_UNKNOWN = 0;
+  CNY = 1;
+  USD = 2;
+}
