@@ -1,0 +1,29 @@
+
+syntax = "proto3";
+
+// 定义包名
+package pkg.error;
+import "errors/errors.proto";
+
+// 多语言特定包名，用于源代码引用
+option go_package = "./errors;";
+
+enum ErrorReason {
+  // 设置缺省错误码
+  option (errors.default_code) = 500;
+
+  // 重复请求
+  DUPLICATE_REQUEST = 0 [(errors.code) = 400];
+  // 为某个枚举单独设置错误码业务错误
+  UNAUTHORIZED = 1 [(errors.code) = 401];
+  FORBIDDEN = 2 [(errors.code) = 403];
+  NOT_FOUND = 3 [(errors.code) = 404];
+  NOT_ACCEPTABLE = 4 [(errors.code) = 404];
+  INVALID_REQUEST = 5 [(errors.code) = 411];
+  LIMITED = 6 [(errors.code) = 429];
+
+
+  SYSTEM_ERROR = 7 [(errors.code) = 500];
+
+
+}

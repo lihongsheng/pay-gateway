@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package payment;
+import "google/api/annotations.proto";
+option go_package="./payment";
+
+service Payment {
+  rpc Pay(PayRequest) returns(PayResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/payment/pay"
+      body: "*"
+    };
+  };
+}
+
+
+message Goods {
+  // 商品名称
+  string name = 1;
+  // 商品SKU
+  string sku = 2;
+  // 商品价格，单位分
+  int64 price = 3;
+  // 商品数量
+  int32 quantity = 4;
+  // 商品描述
+  string desc = 5;
+}
+
+// 订单信息
+message Order {
+  string order_no = 1;
+  // 订单金额
+  Amount amount = 2;
+  // 实付金额
+  Amount pay_amount = 3;
+  // 订单商品
+  repeated Goods goods = 4;
+  // 订单名称
+  string subject = 5;
+  // 订单描述
+  string desc = 6;
+}
+
+// 应用信息
+message ApplicationInfo {
+  string app_id = 1;
+  string url = 2;
+  string ios_package = 3;
+  string android_package = 4;
+}
+
+
+// 买家信息
+message Payer {
+  // 用户在商户的标识
+  string unionid = 1;
+  // 用户在商户下某个应用的标识
+  string openid = 2;
+}
+
+// 金额
+message Amount {
+  // 分单位，一元为100
+  int64 total = 1;
+  // 默认币种 CNY 人民币
+  string currency = 2;
+}
+
+message H5 {
+  ApplicationInfo application_info = 1;
+}
+
+message SceneInfo {
+  // 客户端IP
+  string client_ip = 1;
+  // 设备ID
+  string device_id = 2;
+  // 门店ID
+  string store_id = 3;
+}
+
+message SettleInfo {
+  // 是否分账
+  bool profit_sharing = 1;
+}
+
+message PayRequest {
+  Order order = 1;
+  Amount amount = 2;
+  Payer payer = 3;
+  // 支付跳转地址
+  string redirect_url = 4;
+  // 订单超时时间
+  int64 time_expire = 5;
+  // 支付回调地址
+  string notify_url = 6;
+  // 透传参数 如果请求时传递了该参数，异步通知时将该参数原样返回。
+  string passback_params = 7;
+  SceneInfo scene_info = 8;
+  SettleInfo settle_info = 9;
+  // H5 | JSAPI | NATIVE | APP | 扫码
+  string payment_method = 10;
+}
+
+
+message PayResponse {
+  // 订单号
+  string order_no = 1;
+  // 交易单号
+  string trade_no = 2;
+  // 实付金额
+  Amount pay_amount = 3;
+  // Pending | Success | Fail
+  int32 status = 4;
+  // H5 | JSAPI | NATIVE | APP | 扫码
+  string payment_method = 5;
+  Action action = 6;
+}
+
+// Action 表示支付动作类型
+message Action {
+  // Redirect | Qrcode | Prepay
+  string action = 1;
+  string method = 2;
+  string url = 3;
+  map<string, string> parameters = 4;
+}
+
+// Query 查询参数
+message Query {
+  // 订单号
+  string order_no = 1;
+  // 交易单号
+  string trade_no = 2;
+}

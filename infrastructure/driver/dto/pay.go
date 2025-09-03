@@ -35,7 +35,7 @@ type Order struct {
 	// 订单商品
 	Goods []Goods
 	// 订单名称
-	Name string
+	Subject string
 	// 订单描述
 	Desc string
 	//
@@ -62,9 +62,8 @@ type SceneInfo struct {
 }
 
 type PayOrder struct {
-	Order  Order
-	Amount Amount
-	Payer  Payer
+	Order Order
+	Payer Payer
 	// 支付跳转地址
 	RedirectUrl string
 	// 订单超时时间
@@ -73,6 +72,8 @@ type PayOrder struct {
 	NotifyUrl string
 	// 透传参数 如果请求时传递了该参数，异步通知时将该参数原样返回。
 	PassbackParams string
+	SettleInfo     *SettleInfo
+	SceneInfo      *SceneInfo
 }
 
 type PayResponse struct {
@@ -86,6 +87,7 @@ type PayResponse struct {
 	Status int
 	// H5 | JSAPI | NATIVE | APP | 扫码
 	PaymentMethod string
+	Action        Action
 }
 
 type SettleInfo struct {
@@ -108,7 +110,7 @@ type Query struct {
 	TradeNo string
 }
 
-type Detail struct {
+type PayDetail struct {
 	// 订单优惠金额
 	DiscountAmount Amount
 }

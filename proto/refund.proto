@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package refund;
+import "google/api/annotations.proto";
+option go_package="./refund";
+
+service Refund {
+  rpc Query(RefundQuery) returns(RefundResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/refund"
+    };
+  };
+}
+
+
+// Query 查询参数
+message RefundQuery {
+  // 订单号
+  string order_no = 1;
+  // 交易单号
+  string trade_no = 2;
+}
+
+message RefundResponse {
+  // 订单号
+  string order_no = 1;
+  // 退款单号
+  string refund_no = 2;
+  // 退款金额
+  Amount refund_amount = 3;
+  // 退款状态
+  int32 status = 4;
+}
+
+// 金额
+message Amount {
+  // 分单位，一元为100
+  int64 total = 1;
+  // 默认币种 CNY 人民币
+  string currency = 2;
+}

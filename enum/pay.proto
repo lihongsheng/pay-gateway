@@ -1,4 +1,9 @@
 syntax = "proto3";
+
+// 定义包名
+package enum;
+option go_package = "./enum";
+
 // 支付
 enum Payment {
   Payment_UNKNOWN = 0;
@@ -6,15 +11,28 @@ enum Payment {
   Alipay = 1;
   // 微信
   Wxpay = 2;
+  // 富有
+  Fuiou = 3;
 }
 
 enum PaymentMethod {
   PaymentMethod_UNKNOWN = 0;
+  // H5
   H5 = 1;
+  // APP
   APP = 2;
-  PC = 3;
+  // JSAPI
+  JSAPI = 3;
+  // 原生支付
   Native = 4;
+  // 人脸支付
   Face = 5;
+  // 扫码
+  Qrcode = 6;
+  // 设备扫码
+  Scan = 7;
+  // 小程序
+  LITE = 8;
 }
 
 enum Currency {
