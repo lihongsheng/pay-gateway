@@ -2,11 +2,10 @@ package payment
 
 import (
 	"context"
-	"errors"
 	"time"
 
-	errors2 "github.com/lihongsheng/pay-gateway/errors"
-
+	"github.com/lihongsheng/pay-gateway/enum"
+	"github.com/lihongsheng/pay-gateway/enum/action"
 	"github.com/lihongsheng/pay-gateway/infrastructure/adapter/wxpay"
 	"github.com/lihongsheng/pay-gateway/infrastructure/config"
 	"github.com/lihongsheng/pay-gateway/infrastructure/driver"
@@ -33,23 +32,21 @@ func NewJsApi(conf config.Config) (driver.Pay, error) {
 }
 
 func (j *Jsapi) Pay(ctx context.Context, req *dto.PayOrder) (*dto.PayResponse, error) {
-	resp, _, err := j.client.Prepay(ctx, j.buildPayParmams(req))
+	resp, result, err := j.client.Prepay(ctx, j.buildPayParmams(req))
 	if err != nil {
-		var apiErr *core.APIError
-		if errors.As(err, &apiErr) {
-			return nil, errors2.ErrorSystemError("ddd").WithCause(err)
-		}
-		return nil, errors2.ErrorSystemError("wxpay is error").WithCause(err)
+		return nil, ErrorHandler(ctx, result, err, "")
 	}
-	if resp.PrepayId == nil {
-		return nil, errors2.ErrorSystemError("not return PrepayId")
+	if resp.PrepayId == nil || *resp.PrepayId == "" {
+		return nil, ErrorHandler(ctx, result, err, "not return PrepayId")
 	}
 	return &dto.PayResponse{
+		PaymentMethod: enum.PaymentMethod_JSAPI.String(),
 		Action: dto.Action{
-			Action:     "wxpay",
-			Method:     "POST",
-			Parameters: map[string]string{"appId": j.C.AppID, "timeStamp": time.Now().Format("2006-01-02 15:04:05"), "nonceStr": j.C.MchID, "package": "prepay_id=" + *resp.PrepayId, "signType": "HMAC-SHA256"},
-			Url:        "https://api.mch.weixin.qq.com/pay/unifiedorder",
+			Action: action.Action_Prepay.String(),
+			Parameters: map[string]string{
+				"prepay_id": *resp.PrepayId,
+			},
+			Url: "",
 		},
 		OrderNo:   req.Order.OrderNo,
 		PayAmount: dto.Amount{},

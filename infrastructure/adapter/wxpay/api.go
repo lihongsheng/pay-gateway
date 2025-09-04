@@ -34,14 +34,14 @@ func InitClient(c config.Config) (*Api, error) {
 	// 使用 utils 提供的函数从私钥字符串中加载商户私钥
 	mchPrivateKey, err := utils.LoadPrivateKey(c.CertPrivateKey)
 	publicKeyStr := `-----BEGIN PUBLIC KEY-----
-	MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwrJzCAJ0aart82Y2B5qo
-	sZRv8p1dGX2oLFr1sArJxevW3a1v7cVA0U4WVFJdifDVFpsuich9nsfhUp7CNOZn
-	a+rNveglzYlrtMhqynYU+bKUBBAmYaVyDHOpxkp86fhp0q7qoX8YoeSvYRaVaPoF
-	HRYeahy0d3L+gL8pRhr0k70RZMraC3zzXbuUcM7GNibiKbFiQllhlGlfbV0bmOH8
-	LZcwWwv40Ptdd4x2gihn5vmzGdQ1OAf3D6YmtsXf7iMj0H1g5svyHs17ncSN7h9i
-	WTrVKcNDxrl1dm4BRsxDJsWenwrIM1WUHuonlbE6OoIJEO25T3ucymzWDzMSWxe3
-	sQIDAQAB
-	-----END PUBLIC KEY-----`
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArpfqIBmK2gTiu25eJ4Rh
+9FxyowIbZuhbO0YfzdAek0T76a1IGI/ziOJZBz6HSOnwBOYnbdpz3zd5Qjes9ak8
+dmHXmVK/D951rf0FWVI13RSckINEna0m0VmjuWDryGU1FyiNWwWPxM/g2dKWvvkQ
+nxC8BuuMwl+ov2W6zDC51YO+DQ9ziaukAqEvRr7jbj4owvYX1yLeOVGDlYA3HiNR
+a7wuIbFzPpStfl3jtWZQ2WSmPoIdkKtHNSl0lDa0anPm6/Euxw4OT0mXLsqN4st4
+PtIPIZamBZ4jdZqzMfig/3omzY1iSWfd9OiylUWGi62z9pbSG8iTJ1sOqHQgACZF
+LwIDAQAB
+-----END PUBLIC KEY-----`
 	publicKey, err := utils.LoadPublicKey(publicKeyStr)
 	if err != nil {
 		return nil, errors.New("wxpay load merchant private key errors")

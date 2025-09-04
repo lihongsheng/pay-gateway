@@ -97,8 +97,8 @@ type SettleInfo struct {
 
 type Action struct {
 	// Redirect | Qrcode | Prepay
-	Action     string
-	Method     string
+	Action string
+	// Method     string
 	Url        string
 	Parameters map[string]string
 }

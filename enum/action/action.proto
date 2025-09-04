@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+// 定义包名
+package action;
+option go_package = "./enum/action";
+
+
+enum Action {
+  //Redirect | Qrcode | Prepay
+  Action_UNKNOWN = 0;
+  Redirect = 1;
+  Qrcode = 2;
+  Prepay = 3;
+}
