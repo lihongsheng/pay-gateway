@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>支付结果</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+</head>
+<body>
+<div class="payment-result-container success" id="resultContainer" style="display: none;">
+    <!-- 状态图标 -->
+    <div class="status-icon">
+        <i class="fas fa-check-circle"></i>
+    </div>
+    <!-- 标题 -->
+    <h1 class="result-title" id="statusTitle">支付成功</h1>
+    <p class="result-subtitle" id="statusSubtitle">感谢您的支持，订单已完成支付</p>
+
+    <!-- 详情卡片 -->
+    <div class="details-card">
+        <div class="detail-item">
+            <span class="detail-label">支付时间</span>
+            <span class="detail-value" id="paymentTime"></span>
+        </div>
+        <div class="detail-item">
+            <span class="detail-label">订单号</span>
+            <span class="detail-value" id="orderNo"></span>
+        </div>
+        <div class="detail-item">
+            <span class="detail-label">支付单号</span>
+            <span class="detail-value" id="tradeNo"></span>
+        </div>
+        <div class="detail-item">
+            <span class="detail-label">支付金额</span>
+            <span class="detail-value">
+                    <span class="amount-value" id="paymentAmount"></span>
+                </span>
+        </div>
+        <div class="detail-item">
+            <span class="detail-label">订单描述</span>
+            <span class="detail-value" id="orderSubject"></span>
+        </div>
+    </div>
+    <!-- 底部提示 -->
+    <div class="hint">
+<!--        <p>如有疑问请联系 <a href="tel:400-123-4567">客服热线</a></p>-->
+        <p>页面将在 <span id="countdown">10</span> 秒后自动关闭</p>
+    </div>
+</div>
+<div class="tip" id="payTip" style="display: none;"></div>
+<script src="./fixes.js"></script>
+<script>
+    let orderNo = '';
+    let encryptedToken = '';
+    const API_BASE_URL = getBaseApi('/payment/web/public/success.html')
+    // 解析URL
+    function parseUrlParams() {
+        // 如果从hash中没有获取到，尝试从查询参数中获取
+        const searchParams = getUrlParams();
+        orderNo = searchParams.get('order_no');
+        encryptedToken = searchParams.get('action_token');
+        return !(!orderNo || !encryptedToken);
+
+    }
+    function displayError(s, display = true) {
+        document.getElementById('payTip').innerText = s;
+        document.getElementById('payTip').style.display = 'block';
+        if (display) {
+            document.getElementById('resultContainer').style.display = 'none';
+        }
+    }
+    async function lodeOrder() {
+        if (!orderNo || !encryptedToken) {
+            return false;
+        }
+        try {
+            const res = await query({token: encryptedToken, order_no: orderNo});
+            if (res.code !== 0) {
+                displayError(res.msg, true);
+                return false;
+            }
+            order = res.data;
+            console.log("order:-----;", order, res.data);
+            return true;
+        } catch (e) {
+            console.log( e)
+            displayError('订单信息加载失败，请返回首页重试');
+        }
+        return false;
+    }
+    // 渲染支付结果
+    async function renderPaymentResult() {
+        if (!parseUrlParams()) {
+            displayError('订单信息加载失败，请返回首页重试');
+            return;
+        }
+        const result = await lodeOrder();
+        if (!result) {
+            return;
+        }
+        document.getElementById('resultContainer').style.display = 'block';
+        const container = document.getElementById('resultContainer');
+        const statusTitle = document.getElementById('statusTitle');
+        const statusSubtitle = document.getElementById('statusSubtitle');
+        const statusIcon = document.querySelector('.status-icon i');
+        console.log("order:-----", order)
+        if (order.status === 3) {
+            // 成功状态
+            container.className = 'payment-result-container success';
+            statusTitle.textContent = '支付成功';
+            statusSubtitle.textContent = '感谢您的支持，订单已完成支付';
+            statusIcon.className = 'fas fa-check-circle';
+        } else if (order.status === 1 || order.status === 2 || order.status === 8 || order.status === 9) {
+            // 等待状态
+            container.className = 'payment-result-container waiting';
+            statusTitle.textContent = '支付处理中';
+            statusSubtitle.textContent = '请稍后，支付结果正在处理中';
+            statusIcon.className = 'fas fa-spinner fa-spin';
+        } else {
+            // 失败状态
+            container.className = 'payment-result-container failed';
+            statusTitle.textContent = '支付失败';
+            statusSubtitle.textContent = '支付过程中出现问题，请重试';
+            statusIcon.className = 'fas fa-times-circle';
+        }
+
+        // 更新详情信息
+        document.getElementById('orderNo').textContent = order.order.order_no;
+        document.getElementById('tradeNo').textContent = order.trade_no;
+        document.getElementById('paymentAmount').textContent = `¥ ${(order.order.amount.total / 100).toFixed(2)}`;
+        document.getElementById('paymentTime').textContent = formatDate(order.create);
+        document.getElementById('orderSubject').textContent = order.order.subject;
+        startCountdown();
+    }
+
+    // 倒计时自动返回
+    function startCountdown() {
+        let seconds = 10;
+        const countdownElement = document.getElementById('countdown');
+        const countdownInterval = setInterval(() => {
+            seconds--;
+            countdownElement.textContent = seconds;
+            if (seconds <= 0) {
+                closePage();
+            }
+        }, 1000);
+    }
+    // 页面加载完成后执行
+    document.addEventListener('DOMContentLoaded', function() {
+        renderPaymentResult();
+       // startCountdown();
+    });
+</script>
+
+</body>
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    }
+
+    body {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+    }
+
+    .payment-result-container {
+        background-color: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        width: 100%;
+        max-width: 480px;
+        padding: 40px 30px;
+        text-align: center;
+        transition: all 0.3s ease;
+    }
+
+    .payment-result-container:hover {
+        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+        transform: translateY(-5px);
+    }
+
+    /* 状态图标样式 */
+    .status-icon {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        margin: 0 auto 25px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 50px;
+    }
+
+    .success .status-icon {
+        background-color: rgba(76, 217, 100, 0.1);
+        color: #4CD964;
+        border: 3px solid #4CD964;
+    }
+
+    .failed .status-icon {
+        background-color: rgba(255, 59, 48, 0.1);
+        color: #FF3B30;
+        border: 3px solid #FF3B30;
+    }
+
+    /* 标题样式 */
+    .result-title {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 8px;
+        color: #333;
+    }
+
+    .success .result-title {
+        color: #4CD964;
+    }
+
+    .failed .result-title {
+        color: #FF3B30;
+    }
+
+    .result-subtitle {
+        font-size: 16px;
+        color: #999;
+        margin-bottom: 35px;
+        font-weight: 400;
+    }
+
+    /* 详情卡片 */
+    .details-card {
+        background-color: #f8f9fa;
+        border-radius: 15px;
+        padding: 25px;
+        margin-bottom: 30px;
+        text-align: left;
+    }
+
+    .detail-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 18px;
+        padding-bottom: 18px;
+        border-bottom: 1px solid #eee;
+    }
+
+    .detail-item:last-child {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+    }
+
+    .detail-label {
+        color: #666;
+        font-size: 15px;
+        font-weight: 500;
+    }
+
+    .detail-value {
+        color: #333;
+        font-size: 16px;
+        font-weight: 600;
+        text-align: right;
+        max-width: 60%;
+        word-break: break-word;
+    }
+
+    .amount-value {
+        font-size: 24px;
+        font-weight: 700;
+        color: #FF9500;
+    }
+
+    /* 按钮样式 */
+    .action-buttons {
+        display: flex;
+        gap: 15px;
+    }
+
+    .btn {
+        flex: 1;
+        padding: 16px 20px;
+        border-radius: 12px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: none;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .btn-primary {
+        background-color: #007AFF;
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background-color: #0056CC;
+        transform: translateY(-2px);
+    }
+
+    .btn-secondary {
+        background-color: #f2f2f7;
+        color: #666;
+    }
+
+    .btn-secondary:hover {
+        background-color: #e5e5ea;
+        transform: translateY(-2px);
+    }
+
+    /* 底部提示 */
+    .hint {
+        margin-top: 25px;
+        font-size: 13px;
+        color: #999;
+        line-height: 1.5;
+    }
+
+    .hint a {
+        color: #007AFF;
+        text-decoration: none;
+    }
+
+    .hint a:hover {
+        text-decoration: underline;
+    }
+
+    /* 响应式调整 */
+    @media (max-width: 480px) {
+        .payment-result-container {
+            padding: 30px 20px;
+        }
+
+        .result-title {
+            font-size: 24px;
+        }
+
+        .detail-value {
+            font-size: 15px;
+        }
+
+        .amount-value {
+            font-size: 22px;
+        }
+
+        .action-buttons {
+            flex-direction: column;
+        }
+    }
+
+    /* 动画效果 */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .payment-result-container {
+        animation: fadeInUp 0.6s ease;
+    }
+
+    .status-icon {
+        animation: scaleIn 0.5s ease;
+    }
+
+    @keyframes scaleIn {
+        from {
+            transform: scale(0.8);
+            opacity: 0;
+        }
+        to {
+            transform: scale(1);
+            opacity: 1;
+        }
+    }
+</style>
+</html>
