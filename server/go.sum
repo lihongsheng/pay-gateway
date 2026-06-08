@@ -349,6 +349,8 @@ github.com/lihongsheng/payment-sdk v0.0.0-20260605092902-8909bd4df20b h1:e2Nqzyf
 github.com/lihongsheng/payment-sdk v0.0.0-20260605092902-8909bd4df20b/go.mod h1:qL6nAzcNtNwm4Juf/1KxrqvnP61hrpSitN9aPbNd35E=
 github.com/lihongsheng/payment-sdk v0.0.0-20260606084225-79785a124a2d h1:mkXQW5USv4rMCXvhotYFAESboiTnjILw5HSy+/eDI4Q=
 github.com/lihongsheng/payment-sdk v0.0.0-20260606084225-79785a124a2d/go.mod h1:qL6nAzcNtNwm4Juf/1KxrqvnP61hrpSitN9aPbNd35E=
+github.com/lihongsheng/payment-sdk v0.0.0-20260608095946-9cde9e37252e h1:5bXEwGYbdu92cSvA95mqmFyZZFJaVxxhxHFGog+xEcA=
+github.com/lihongsheng/payment-sdk v0.0.0-20260608095946-9cde9e37252e/go.mod h1:qL6nAzcNtNwm4Juf/1KxrqvnP61hrpSitN9aPbNd35E=
 github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 h1:7UMa6KCCMjZEMDtTVdcGu0B1GmmC7QJKiCCjyTAWQy0=
 github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683/go.mod h1:ilwx/Dta8jXAgpFYFvSWEMwxmbWXyiUHkd5FwyKhb5k=
 github.com/magiconair/properties v1.8.9 h1:nWcCbLq1N2v/cpNsy5WvQ37Fb+YElfq20WJ/a8RkpQM=

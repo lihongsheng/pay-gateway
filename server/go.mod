@@ -19,7 +19,7 @@ require (
 	github.com/gookit/color v1.5.4
 	github.com/huaweicloud/huaweicloud-sdk-go-obs v3.24.9+incompatible
 	github.com/jordan-wright/email v4.0.1-0.20210109023952-943e75fe5223+incompatible
-	github.com/lihongsheng/payment-sdk v0.0.0-20260606084225-79785a124a2d
+	github.com/lihongsheng/payment-sdk v0.0.0-20260608095946-9cde9e37252e
 	github.com/mark3labs/mcp-go v0.41.1
 	github.com/mholt/archives v0.1.1
 	github.com/minio/minio-go/v7 v7.0.84

@@ -13,13 +13,14 @@
           :path="childPath(item.key)"
           :root="root"
           :errors="childErr(item.key)"
+          :required="isRequiredKey(item.key)"
           :on-update="onUpdate"
       />
     </div>
   </el-card>
 
   <!-- ===== Array of objects ===== -->
-  <el-form-item v-else-if="schema.type === 'array' && schema.items && schema.items.type === 'object'" :label="title">
+  <el-form-item v-else-if="schema.type === 'array' && schema.items && schema.items.type === 'object'" :label="title" :required="required">
     <div style="width:100%">
       <div v-for="(item, idx) in arrayValue" :key="idx" class="schema-array-item">
         <div class="schema-array-item-header">
@@ -39,7 +40,7 @@
   </el-form-item>
 
   <!-- ===== Array of primitives ===== -->
-  <el-form-item v-else-if="schema.type === 'array'" :label="title" :error="currentError">
+  <el-form-item v-else-if="schema.type === 'array'" :label="title" :error="currentError" :required="required">
     <div style="width:100%">
       <div v-for="(item, idx) in arrayValue" :key="idx" style="display:flex;gap:8px;margin-bottom:6px;">
         <el-input
@@ -54,7 +55,7 @@
   </el-form-item>
 
   <!-- ===== 叶子字段 ===== -->
-  <el-form-item v-else :label="title" :error="currentError" :class="{ 'has-example': hasExample }">
+  <el-form-item v-else :label="title" :error="currentError" :required="required" :class="{ 'has-example': hasExample }">
     <el-input
         v-if="inputTypeV === 'text'"
         class="full-width"
@@ -191,6 +192,7 @@ export default {
     path: { type: Array, default: () => [] },
     root: Object,
     errors: { type: Object, default: () => ({}) },
+    required: { type: Boolean, default: false },
     onUpdate: { type: Function, default: null },
   },
   computed: {
@@ -261,6 +263,9 @@ export default {
     keyOf(p) { return p.join('.') },
     childPath(key) { return [...this.path, key] },
     arrItemPath(idx) { return [...this.path, idx] },
+    isRequiredKey(key) {
+      return Array.isArray(this.schema?.required) && this.schema.required.includes(key)
+    },
     childErr(key) {
       let e = this.errors
       for (const k of this.path) {
