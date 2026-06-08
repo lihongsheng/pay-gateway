@@ -11,7 +11,6 @@ import (
 	"github.com/lihongsheng/pay-gateway/plugin/payment/service/dto"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
 	paySdk "github.com/lihongsheng/payment-sdk"
-	params2 "github.com/lihongsheng/payment-sdk/config/params"
 	"github.com/lihongsheng/payment-sdk/driver/iface"
 	"github.com/lihongsheng/payment-sdk/enum/channel"
 	"gorm.io/gorm"
@@ -244,39 +243,6 @@ func (s *paymentAccountService) GetApplicationChannelConfig(ctx context.Context,
 	fuiouOptions := fuiou.GetConfigOptions()
 	result = append(result, fuiouOptions)
 	return result, nil
-}
-
-// GetApplicationExtendConfig 获取商户的扩展配置，一般用于拉卡拉，富友 在收银台页面获取用户openid的微信或者支付宝配置
-// 富友，拉卡拉 需要和对应的微信和支付宝一一对应
-func (s *paymentAccountService) GetApplicationExtendConfig(ctx context.Context, appNo string, channelCode string) ([]params2.Option, error) {
-	if channelCode == channel.Channel_Alipay.String() {
-		return nil, nil
-	}
-	options := []params2.Option{
-		{
-			Label:        "微信AppID",
-			Name:         "app_id",
-			Type:         params2.String,
-			ValidateReg:  "^wx[0-9a-zA-Z]{16,32}$",
-			ValidateType: params2.ValidateReg,
-			InputType:    params2.InputText,
-			Default:      "",
-			Values:       nil,
-			Require:      true,
-		},
-		{
-			Label:        "应用Secret",
-			Name:         "app_secret",
-			Type:         params2.String,
-			ValidateReg:  "",
-			ValidateType: params2.ValidateString,
-			InputType:    params2.InputPassword,
-			Default:      "",
-			Values:       nil,
-			Require:      true,
-		},
-	}
-	return options, nil
 }
 
 func (s *paymentAccountService) GetPaymentProduct(channelCode string) ([]admin.PaymentMethodConfig, error) {

@@ -9,6 +9,7 @@ import (
 	alipayConfig "github.com/lihongsheng/payment-sdk/adapter/alipay/config"
 	fuiouConfig "github.com/lihongsheng/payment-sdk/adapter/fuiou/config"
 	wechatConfig "github.com/lihongsheng/payment-sdk/adapter/wxpay/config"
+	"github.com/lihongsheng/payment-sdk/config/proxy"
 	"github.com/lihongsheng/payment-sdk/enum/payment"
 )
 
@@ -42,10 +43,12 @@ func (a *FuiouUser) GetUserOpenID(ctx context.Context, authCode string, accountD
 
 func (a *FuiouUser) GetWechatOpenID(ctx context.Context, fuiouConf *fuiouConfig.Config, authCode string, accountDetail *entity.PaymentAccount, app *model.Application) (string, error) {
 	conf := wechatConfig.Config{
-		AppID:     fuiouConf.WechatAppId,
-		AppSecret: fuiouConf.WechatAppSecret,
+		Merchant: wechatConfig.Merchant{
+			AppID:     fuiouConf.Wechat.AppID,
+			AppSecret: fuiouConf.Wechat.AppSecret,
+		},
 	}
-	if conf.AppID == "" || conf.AppSecret == "" {
+	if conf.Merchant.AppID == "" || conf.Merchant.AppSecret == "" {
 		return "", errors2.NewError(errors2.ErrCodeInvalidParam, "无效的微信配置")
 	}
 	return GetWechatOpenID(ctx, a.wechatUser.Cache, conf, authCode, app)
@@ -53,11 +56,17 @@ func (a *FuiouUser) GetWechatOpenID(ctx context.Context, fuiouConf *fuiouConfig.
 
 func (a *FuiouUser) GetAliOpenID(ctx context.Context, fuiouConf *fuiouConfig.Config, authCode string, accountDetail *entity.PaymentAccount, app *model.Application) (string, error) {
 	conf := alipayConfig.Config{
-		AppID:      fuiouConf.AlipayAppId,
-		RsaPrivate: fuiouConf.AlipayRsaPrivate,
-		RsaRootCrt: fuiouConf.AlipayRsaRootCrt,
+		Merchant: alipayConfig.Merchant{
+			AppID: fuiouConf.Alipay.AppID,
+		},
+		Cert: alipayConfig.Cert{
+			RsaPrivate: fuiouConf.Alipay.RsaPrivate,
+			RsaRootCrt: fuiouConf.Alipay.RsaRootCrt,
+		},
+		Proxy: proxy.Proxy{},
 	}
-	if conf.AppID == "" || conf.RsaPrivate == "" || conf.RsaRootCrt == "" {
+
+	if conf.Merchant.AppID == "" || conf.Cert.RsaPrivate == "" || conf.Cert.RsaRootCrt == "" {
 		return "", errors2.NewError(errors2.ErrCodeInvalidParam, "无效的支付宝配置")
 	}
 	return GetAliUserOpenID(ctx, conf, authCode, app)
@@ -81,10 +90,12 @@ func (a *FuiouUser) RedirectUrl(ctx context.Context, callbackUrl string, account
 
 func (a *FuiouUser) GetWechatRedirectUrl(ctx context.Context, fuiouConf *fuiouConfig.Config, callbackUrl string) (string, error) {
 	conf := wechatConfig.Config{
-		AppID:     fuiouConf.WechatAppId,
-		AppSecret: fuiouConf.WechatAppSecret,
+		Merchant: wechatConfig.Merchant{
+			AppID:     fuiouConf.Wechat.AppID,
+			AppSecret: fuiouConf.Wechat.AppSecret,
+		},
 	}
-	if conf.AppID == "" || conf.AppSecret == "" {
+	if conf.Merchant.AppID == "" || conf.Merchant.AppSecret == "" {
 		return "", errors2.NewError(errors2.ErrCodeInvalidParam, "无效的微信配置")
 	}
 	return GetWechatRedirectUrl(conf, callbackUrl), nil
@@ -92,11 +103,17 @@ func (a *FuiouUser) GetWechatRedirectUrl(ctx context.Context, fuiouConf *fuiouCo
 
 func (a *FuiouUser) GetAliRedirectUrl(ctx context.Context, fuiouConf *fuiouConfig.Config, callbackUrl string) (string, error) {
 	conf := alipayConfig.Config{
-		AppID:      fuiouConf.AlipayAppId,
-		RsaPrivate: fuiouConf.AlipayRsaPrivate,
-		RsaRootCrt: fuiouConf.AlipayRsaRootCrt,
+		Merchant: alipayConfig.Merchant{
+			AppID: fuiouConf.Alipay.AppID,
+		},
+		Cert: alipayConfig.Cert{
+			RsaPrivate: fuiouConf.Alipay.RsaPrivate,
+			RsaRootCrt: fuiouConf.Alipay.RsaRootCrt,
+		},
+		Proxy: proxy.Proxy{},
 	}
-	if conf.AppID == "" || conf.RsaPrivate == "" || conf.RsaRootCrt == "" {
+
+	if conf.Merchant.AppID == "" || conf.Cert.RsaPrivate == "" || conf.Cert.RsaRootCrt == "" {
 		return "", errors2.NewError(errors2.ErrCodeInvalidParam, "无效的支付宝配置")
 	}
 	return GetAliRedirectUrl(ctx, conf, callbackUrl), nil

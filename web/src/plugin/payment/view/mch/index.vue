@@ -375,7 +375,7 @@ const changeStatus = async (row) => {
 // 应用管理跳转（原有逻辑）
 const goToApplications = (mch_no) => {
   router.push({
-    path: '/layout/index/applicationIndex',
+    path: '/layout/applicationManage/applicationIndex',
     query: { mch_no: mch_no }
   })
 }

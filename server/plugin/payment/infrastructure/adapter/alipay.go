@@ -60,7 +60,7 @@ func GetAliUserOpenID(ctx context.Context, conf alipayConfig.Config, authCode st
 func GetAliRedirectUrl(ctx context.Context, conf alipayConfig.Config, callbackUrl string) string {
 	oauthUrl, _ := url.Parse("https://openauth.alipay.com/oauth2/publicAppAuthorize.htm")
 	query := url.Values{}
-	query.Add("app_id", conf.AppID)
+	query.Add("app_id", conf.Merchant.AppID)
 	query.Add("scope", "auth_base")
 	query.Add("redirect_uri", callbackUrl)
 	oauthUrl.RawQuery = query.Encode()

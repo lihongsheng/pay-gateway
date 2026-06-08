@@ -92,10 +92,10 @@ func (a *WechatUser) GetUserOpenID(ctx context.Context, authCode string, account
 }
 
 func GetWechatOpenID(ctx context.Context, cache *CacheWechat, conf wechatConfig.Config, authCode string, app *model.Application) (string, error) {
-	token, aes := utils.GenerateTokenAndEncodingKey(conf.AppID)
+	token, aes := utils.GenerateTokenAndEncodingKey(conf.Merchant.AppID)
 	c := &offConfig.Config{
-		AppID:          conf.AppID,
-		AppSecret:      conf.AppSecret,
+		AppID:          conf.Merchant.AppID,
+		AppSecret:      conf.Merchant.AppSecret,
 		Token:          token,
 		EncodingAESKey: aes,
 		Cache:          cache,
@@ -133,7 +133,7 @@ func (a *WechatUser) RedirectUrl(ctx context.Context, callbackUrl string, accoun
 func GetWechatRedirectUrl(conf wechatConfig.Config, callbackUrl string) string {
 	oauthUrl, _ := url.Parse("https://open.weixin.qq.com/connect/oauth2/authorize")
 	query := url.Values{}
-	query.Add("appid", conf.AppID)
+	query.Add("appid", conf.Merchant.AppID)
 	query.Add("scope", "snsapi_base")
 	query.Add("redirect_uri", callbackUrl)
 	query.Add("response_type", "code")
