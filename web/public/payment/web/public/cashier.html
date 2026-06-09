@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>支付</title>
+    <script src="https://gw.alipayobjects.com/as/g/h5-lib/alipayjsapi/3.1.1/alipayjsapi.min.js"></script>
+</head>
+<body>
+<div class="pay-container">
+    <!-- 加载状态 -->
+    <div class="loading" id="loading">
+        <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="spinner">
+            <circle cx="12" cy="12" r="10" stroke="#ccc" stroke-width="2" fill="none"/>
+            <path d="M12 2C16.9706 2 21 6.02944 21 11C21 15.9706 16.9706 20 12 20C7.02944 20 3 15.9706 3 11C3 6.02944 7.02944 2 12 2Z"
+                  stroke="#07c160" stroke-width="2" fill="none" stroke-linecap="round" transform="rotate(-45 12 12)"
+                  style="stroke-dasharray: 30; stroke-dashoffset: 40;">
+                <animateTransform
+                        attributeName="transform"
+                        attributeType="XML"
+                        type="rotate"
+                        from="0 12 12"
+                        to="360 12 12"
+                        dur="1s"
+                        repeatCount="indefinite"/>
+            </path>
+        </svg>
+        <span style="margin-left: 8px;">加载中...</span>
+    </div>
+
+    <!-- 商户信息 -->
+    <div class="merchant-info" id="merchantInfo" style="display: none;">
+        <div class="merchant-name" id="payTitle"></div>
+    </div>
+
+    <!-- 金额输入 -->
+    <div class="amount-input" id="amountInput" style="display: none;">
+        <label>支付金额（元）</label>
+        <input disabled type="number" placeholder="0.00" step="0.01" min="0.01" id="amount">
+    </div>
+    <!-- 支付按钮 -->
+    <button class="pay-btn" id="payBtn" disabled style="display: none;" onclick="handlePay()">
+        确认支付
+    </button>
+    <!-- 提示 -->
+    <div class="tip" id="payTip" style="display: none;"></div>
+</div>
+<script src="./fixes.js"></script>
+<script>
+    const API_BASE_URL = getBaseApi('/payment/web/public/cashier.html')
+    // 商户配置信息
+    let isPaying          = false;   // 是否正在支付
+    let detail            = {};
+    let isLoading = true;
+    // ============== 第一步：初始化（解析URL、判断支付环境） ==============
+    window.onload = async function() {
+        try {
+            // 2. 判断当前支付环境（微信/支付宝）
+            judgePaymentPayEnv();
+            // 1. 解析URL参数（从路径/查询参数获取app_no）
+            parsePaymentUrlParams(true);
+            // 3. 是否重定向获取 auth code
+            await loadPaymentApplicationConfig();
+            await loadRetryRedirectUrl(urlQueryParams.orderNo, false, 'cashier');
+            await loadCashierOrder();
+            await loadRetryUserIdentity('cashier');
+            // 5. 渲染页面
+            renderPage();
+        } catch (err) {
+            displayError(err.message)
+        }
+    };
+
+    function displayError(s, display = true, close = false) {
+        document.getElementById('payTip').innerText = s;
+        document.getElementById('payTip').style.display = 'block';
+        if (close) {
+            setInterval(() => {
+                closePage();
+            }, 3000);
+        }
+        if (display) {
+            document.getElementById('merchantInfo').style.display = 'none';
+            document.getElementById('amountInput').style.display = 'none';
+            document.getElementById('payBtn').style.display = 'none';
+        }
+    }
+
+    // 渲染页面
+    function renderPage() {
+        if (urlQueryParams.action === 'hub') {
+            return;
+        }
+        // 隐藏加载
+        document.getElementById('loading').style.display = 'none';
+        if (document.getElementById('payTip').style.display === 'none') {
+            // 渲染商户信息
+            document.getElementById('payTitle').innerText = orderDetail.order.subject;
+            document.getElementById('amount').value = orderDetail.order.amount.total/100;
+            // 显示核心区域
+            document.getElementById('merchantInfo').style.display = 'block';
+            document.getElementById('amountInput').style.display = 'block';
+            document.getElementById('payBtn').style.display = 'block';
+            // 启用支付按钮（需先输入金额）
+            document.getElementById('payBtn').disabled = false;
+        }
+    }
+    async function pay() {
+        try {
+            // 调用统一下单接口
+            const res = await cashierPayment({
+                token: urlQueryParams.encryptToken,
+                payment_method: urlQueryParams.paymentMethod,
+                payment_product: urlQueryParams.paymentProduct,
+                account_no: urlQueryParams.accountNO,
+                device: payEnv.getDevice(),
+                order_no: urlQueryParams.orderNo,
+                open_id: urlQueryParams.openId,
+                request_id: generatePaymentNo('C')
+            });
+            if (res.code === 41203 && applicationConfig.multi_channel) {
+                await loadRetryRedirectUrl(urlQueryParams.orderNo, true, 'aggregate');
+                return res;
+            }
+            return res;
+        } catch (err) {
+            displayError('支付异常:' + err.message,true, true);
+        }
+    }
+    // 支付宝支付
+    async function handleAlipay() {
+        if (isPaying) return;
+        isPaying = true;
+        try {
+            // 调用统一下单接口
+            const res = await pay();
+            if (res.code !== 0) {
+                displayError('支付宝支付失败:'+ res?.msg);
+                return ;
+            }
+            const redirectUrl = res.data?.redirect_url;
+            const tradeNO = res.data?.out_trade_no || '';
+            // 调用支付宝支付
+            if (typeof AlipayJSBridge !== "undefined") {
+                AlipayJSBridge.call('tradePay', {
+                    tradeNO: tradeNO,
+                }, function(result) {
+                    isPaying = false;
+                    if (result.resultCode === "9000") {
+                        if (redirectUrl) {
+                            window.location.href = redirectUrl;
+                        } else {
+                            displayError('支付宝支付成功', true, true);
+                        }
+                    } else if (result.resultCode === "6001") {
+                        // 用户取消支付
+                        displayError('用户取消支付', false, false);
+                    } else {
+                        // 支付失败
+                        displayError('支付宝支付失败',  true,  true);
+                    }
+                });
+            }
+        } catch (err) {
+            console.error('支付宝支付失败：', err);
+            displayError('支付宝支付异常：' + err.message);
+            isPaying = false;
+        }
+    }
+    // 微信支付逻
+    async function handleWxPay() {
+        if (isPaying) return;
+        isPaying = true;
+        try {
+            const res = await pay();
+            if (res.code !== 0) {
+                displayError('支付-失败:'+ res?.msg);
+                return ;
+            }
+            const redirectUrl = res.data?.redirect_url;
+            const paramsTer = res.data.action?.parameters;
+            if ((!paramsTer)) {
+                displayError('支付已完成');
+                return ;
+            }
+            // 调用微信JSAPI支付
+            if (typeof WeixinJSBridge === "undefined") {
+                document.addEventListener('WeixinJSBridgeReady', () => {
+                    invokeWeChatPay(paramsTer.appId, paramsTer.package , paramsTer.timeStamp, paramsTer.nonceStr, paramsTer.signType, paramsTer.paySign, redirectUrl);
+                }, false);
+            } else {
+                invokeWeChatPay(paramsTer.appId, paramsTer.package, paramsTer.timeStamp, paramsTer.nonceStr, paramsTer.signType, paramsTer.paySign, redirectUrl);
+            }
+        } catch (err) {
+            console.error('微信支付失败：', err);
+            displayError('支付失败5：' + err.message);
+            isPaying = false;
+        }
+    }
+    function invokeWeChatPay(appid, packages, timestamp, nonce_str, sign_type, pay_sign,redirectUrl) {
+        WeixinJSBridge.invoke(
+            'getBrandWCPayRequest', {
+                appId: appid, // 公众号AppID
+                timeStamp: timestamp,
+                nonceStr: nonce_str,
+                package: packages,
+                signType: sign_type,
+                paySign: pay_sign
+            },
+            function(res) {
+                if (res.err_msg === "get_brand_wcpay_request:ok") {
+                    if (redirectUrl) {
+                        window.location.href = redirectUrl;
+                    } else {
+                        displayError('支付成功', true, true);
+                    }
+                } else if (res.err_msg === "get_brand_wcpay_request:cancel") {
+                    // 用户取消支付
+                    displayError('用户取消支付', false, false);
+                } else {
+                    // 支付失败
+                    displayError('支付失败6：' + res.err_msg, true,  true);
+                }
+            }
+        );
+    }
+    function handlePay() {
+        if (payEnv.isWechatBrowser()) {
+            handleWxPay();
+        } else if (payEnv.isAlipayBrowser()) {
+            handleAlipay();
+        } else {
+            displayError('请使用微信或者支付宝扫码支付', true, true);
+        }
+        isPaying = false;
+    }
+</script>
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    body {
+        background-color: #f5f5f5;
+        padding: 20px;
+    }
+    .pay-container {
+        max-width: 400px;
+        margin: 0 auto;
+        background: #fff;
+        border-radius: 12px;
+        padding: 30px 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    /* 商户信息区域 */
+    .merchant-info {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+    .merchant-logo {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        object-fit: cover;
+        margin-bottom: 15px;
+        border: 1px solid #eee;
+    }
+    .merchant-name {
+        font-size: 20px;
+        font-weight: 600;
+        color: #333;
+    }
+    /* 金额输入区域 */
+    .amount-input {
+        margin-bottom: 30px;
+    }
+    .amount-input label {
+        display: block;
+        font-size: 14px;
+        color: #666;
+        margin-bottom: 8px;
+    }
+    .amount-input input {
+        width: 100%;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 18px;
+        text-align: center;
+        outline: none;
+    }
+    .amount-input input:focus {
+        border-color: #07c160;
+    }
+    .amount-error {
+        color: #f53f3f;
+        font-size: 12px;
+        margin-top: 5px;
+        text-align: center;
+        display: none;
+    }
+    /* 支付按钮 */
+    .pay-btn {
+        width: 100%;
+        padding: 16px;
+        background-color: #07c160;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        font-size: 18px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .pay-btn:disabled {
+        background-color: #a0d9b8;
+        cursor: not-allowed;
+    }
+    /* 加载/提示样式 */
+    .loading {
+        text-align: center;
+        padding: 20px 0;
+        color: #999;
+        font-size: 14px;
+        display: none;
+    }
+    .tip {
+        text-align: center;
+        color: #999;
+        font-size: 12px;
+        margin-top: 15px;
+    }
+</style>
