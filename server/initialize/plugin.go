@@ -1,15 +1,13 @@
 package initialize
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/lihongsheng/pay-gateway/global"
+	// 通过空导入触发各插件 init() 自注册
+	_ "github.com/lihongsheng/go-admin/server/plugin/example"
+
+	"github.com/lihongsheng/go-admin/server/plugin"
 )
 
-func InstallPlugin(PrivateGroup *gin.RouterGroup, PublicRouter *gin.RouterGroup, engine *gin.Engine) {
-	if global.GVA_DB == nil {
-		global.GVA_LOG.Info("项目暂未初始化，无法安装插件，初始化后重启项目即可完成插件安装")
-		return
-	}
-	bizPluginV1(PrivateGroup, PublicRouter)
-	bizPluginV2(engine)
+// LoadPlugins 仅依赖 init() 完成注册；这里只是给个显式触点
+func LoadPlugins() {
+	_ = plugin.All() // 占位，确保包被引用
 }

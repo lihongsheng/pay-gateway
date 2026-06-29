@@ -1,0 +1,19 @@
+package initialize
+
+import (
+	"github.com/lihongsheng/go-admin/server/global"
+	"github.com/lihongsheng/go-admin/server/log"
+	"github.com/lihongsheng/go-admin/server/utils/casbin"
+)
+
+// SetupCasbin 在 global.DB 就绪后初始化 enforcer + 自动建 casbin_rule 表
+func SetupCasbin() {
+	if global.DB == nil {
+		return
+	}
+	if err := casbin.Setup(global.DB); err != nil {
+		log.Error("casbin setup: " + err.Error())
+		return
+	}
+	log.Info("casbin enforcer ready")
+}

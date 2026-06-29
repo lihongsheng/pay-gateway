@@ -1,85 +1,74 @@
 package initialize
 
 import (
-	"os"
+	"fmt"
 
-	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/model/example"
-	"github.com/lihongsheng/pay-gateway/model/system"
+	"github.com/lihongsheng/go-admin/server/core/installer"
+	"github.com/lihongsheng/go-admin/server/global"
+	applog "github.com/lihongsheng/go-admin/server/log"
+	"github.com/lihongsheng/go-admin/server/model/system"
 
-	"go.uber.org/zap"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-func Gorm() *gorm.DB {
-	switch global.GVA_CONFIG.System.DbType {
-	case "mysql":
-		global.GVA_ACTIVE_DBNAME = &global.GVA_CONFIG.Mysql.Dbname
-		return GormMysql()
-	case "pgsql":
-		global.GVA_ACTIVE_DBNAME = &global.GVA_CONFIG.Pgsql.Dbname
-		return GormPgSql()
-	case "oracle":
-		global.GVA_ACTIVE_DBNAME = &global.GVA_CONFIG.Oracle.Dbname
-		return GormOracle()
-	case "mssql":
-		global.GVA_ACTIVE_DBNAME = &global.GVA_CONFIG.Mssql.Dbname
-		return GormMssql()
-	case "sqlite":
-		global.GVA_ACTIVE_DBNAME = &global.GVA_CONFIG.Sqlite.Dbname
-		return GormSqlite()
-	default:
-		global.GVA_ACTIVE_DBNAME = &global.GVA_CONFIG.Mysql.Dbname
-		return GormMysql()
+// GormConnect 用 global.Cfg.DB 打开连接，挂到 global.DB
+func GormConnect() error {
+	db, err := installer.OpenWith(global.Cfg.DB)
+	if err != nil {
+		return fmt.Errorf("open db: %w", err)
 	}
+	// 调整日志级别
+	switch global.Cfg.DB.LogMode {
+	case "silent":
+		db.Logger = db.Logger.LogMode(logger.Silent)
+	case "error":
+		db.Logger = db.Logger.LogMode(logger.Error)
+	case "warn":
+		db.Logger = db.Logger.LogMode(logger.Warn)
+	case "info":
+		db.Logger = db.Logger.LogMode(logger.Info)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	if global.Cfg.DB.MaxIdle > 0 {
+		sqlDB.SetMaxIdleConns(global.Cfg.DB.MaxIdle)
+	}
+	if global.Cfg.DB.MaxOpen > 0 {
+		sqlDB.SetMaxOpenConns(global.Cfg.DB.MaxOpen)
+	}
+	global.SetDB(db)
+	return nil
 }
 
-func RegisterTables() {
-	if global.GVA_CONFIG.System.DisableAutoMigrate {
-		global.GVA_LOG.Info("auto-migrate is disabled, skipping table registration")
+// DetectInstalled 在已连接 DB 上探测是否安装过
+func DetectInstalled() {
+	if global.DB == nil {
 		return
 	}
-
-	db := global.GVA_DB
-	err := db.AutoMigrate(
-
-		system.SysApi{},
-		system.SysIgnoreApi{},
-		system.SysUser{},
-		system.SysBaseMenu{},
-		system.JwtBlacklist{},
-		system.SysAuthority{},
-		system.SysDictionary{},
-		system.SysOperationRecord{},
-		system.SysAutoCodeHistory{},
-		system.SysDictionaryDetail{},
-		system.SysBaseMenuParameter{},
-		system.SysBaseMenuBtn{},
-		system.SysAuthorityBtn{},
-		system.SysAutoCodePackage{},
-		system.SysExportTemplate{},
-		system.Condition{},
-		system.JoinTemplate{},
-		system.SysParams{},
-		system.SysVersion{},
-		system.SysError{},
-
-		example.ExaFile{},
-		example.ExaCustomer{},
-		example.ExaFileChunk{},
-		example.ExaFileUploadAndDownload{},
-		example.ExaAttachmentCategory{},
-	)
-	if err != nil {
-		global.GVA_LOG.Error("register table failed", zap.Error(err))
-		os.Exit(0)
+	if !global.DB.Migrator().HasTable(&system.SysInstall{}) {
+		global.Installed.Store(false)
+		return
 	}
-
-	err = bizModel()
-
-	if err != nil {
-		global.GVA_LOG.Error("register biz_table failed", zap.Error(err))
-		os.Exit(0)
+	var n int64
+	if err := global.DB.Model(&system.SysInstall{}).Count(&n).Error; err != nil {
+		applog.Warn("count sys_install: " + err.Error())
+		return
 	}
-	global.GVA_LOG.Info("register table success")
+	global.Installed.Store(n > 0)
 }
+
+// MustRefreshDB 安装完成后用最新 cfg 重新打开连接
+func MustRefreshDB() error {
+	if global.DB != nil {
+		if sqlDB, err := global.DB.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	}
+	return GormConnect()
+}
+
+// Tx 简写：在 global.DB 上开事务
+func Tx(fn func(*gorm.DB) error) error { return global.DB.Transaction(fn) }

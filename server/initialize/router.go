@@ -2,127 +2,162 @@ package initialize
 
 import (
 	"net/http"
-	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/lihongsheng/go-admin/server/config"
+	"github.com/lihongsheng/go-admin/server/log"
+	"github.com/lihongsheng/go-admin/server/middleware"
+	"github.com/lihongsheng/go-admin/server/router"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lihongsheng/pay-gateway/docs"
-	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/middleware"
-	"github.com/lihongsheng/pay-gateway/router"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
-type justFilesFilesystem struct {
-	fs http.FileSystem
+// RouterOption 路由初始化选项
+type RouterOption func(*routerConfig)
+
+type routerConfig struct {
+	logger         log.Logger
+	cfg            config.Config
+	install        *installGuardConfig
+	metricsHandler http.Handler
 }
 
-func (fs justFilesFilesystem) Open(name string) (http.File, error) {
-	f, err := fs.fs.Open(name)
-	if err != nil {
-		return nil, err
-	}
-
-	stat, err := f.Stat()
-	if stat.IsDir() {
-		return nil, os.ErrPermission
-	}
-
-	return f, nil
+type installGuardConfig struct {
+	// 这里可以放 InstallGuard 需要的参数
 }
 
-// 初始化总路由
+// WithRouterLogger 为路由设置 logger
+func WithRouterLogger(logger log.Logger) RouterOption {
+	return func(c *routerConfig) {
+		c.logger = logger
+	}
+}
 
-func Routers() *gin.Engine {
-	Router := gin.New()
-	// 使用自定义的 Recovery 中间件，记录 panic 并入库
-	Router.Use(middleware.GinRecovery(true))
-	if gin.Mode() == gin.DebugMode {
-		Router.Use(gin.Logger())
+// WithRouterConfig 为路由设置配置
+func WithRouterConfig(cfg config.Config) RouterOption {
+	return func(c *routerConfig) {
+		c.cfg = cfg
+	}
+}
+
+// WithMetricsHandler 为路由设置 Prometheus metrics handler
+func WithMetricsHandler(handler http.Handler) RouterOption {
+	return func(c *routerConfig) {
+		c.metricsHandler = handler
+	}
+}
+
+// Router 构造 gin 路由
+func Router(opts ...RouterOption) *gin.Engine {
+	cfg := &routerConfig{
+		logger: log.Global(),
+	}
+	for _, opt := range opts {
+		opt(cfg)
 	}
 
-	if !global.GVA_CONFIG.MCP.Separate {
+	gin.SetMode(cfg.cfg.App.Mode)
+	r := gin.New()
+	// 中间件顺序很重要！
+	r.Use(gin.Recovery())
+	// 1. 先添加 otelgin 中间件，它会：
+	//    - 从 header 提取 W3C Trace Context（如果有）
+	//    - 或者创建新的 span（作为第一个请求）
+	var serviceName string
+	if cfg.cfg.Observability.Trace.Enable {
+		serviceName = cfg.cfg.Observability.Trace.ServiceName
+		if serviceName == "" {
+			serviceName = cfg.cfg.App.Name
+			if serviceName == "" {
+				serviceName = "go-admin-server"
+			}
+		}
+		r.Use(otelgin.Middleware(serviceName))
+	}
 
-		sseServer := McpRun()
+	// 2. 然后添加我们的 Trace 中间件，它会：
+	//    - 从 context 读取 otelgin 设置的 span
+	//    - 通过 valuers 自动提取 trace_id 等信息
+	r.Use(middleware.Trace(
+		middleware.WithLogger(cfg.logger),
+	))
 
-		// 注册mcp服务
-		Router.GET(global.GVA_CONFIG.MCP.SSEPath, func(c *gin.Context) {
-			sseServer.SSEHandler().ServeHTTP(c.Writer, c.Request)
+	// 3. HTTP 指标中间件（记录请求计数、延迟、错误率）
+	if cfg.cfg.Observability.Metrics.Enable {
+		r.Use(middleware.Metrics())
+	}
+
+	// 4. 其他中间件
+	r.Use(middleware.Cors())
+	r.Use(middleware.RequestLog(
+		middleware.WithRequestLogger(cfg.logger),
+	))
+
+	// 健康检查 / 安装状态前置（不走 InstallGuard）
+	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+
+	// Prometheus metrics 端点（放在 InstallGuard 之前，确保始终可达）
+	if cfg.cfg.Observability.Metrics.Enable && cfg.metricsHandler != nil {
+		metricsPath := cfg.cfg.Observability.Metrics.Path
+		if metricsPath == "" {
+			metricsPath = "/metrics"
+		}
+		r.GET(metricsPath, func(c *gin.Context) {
+			cfg.metricsHandler.ServeHTTP(c.Writer, c.Request)
 		})
-
-		Router.POST(global.GVA_CONFIG.MCP.MessagePath, func(c *gin.Context) {
-			sseServer.MessageHandler().ServeHTTP(c.Writer, c.Request)
-		})
+		cfg.logger.Info("metrics endpoint mounted", "path", metricsPath)
 	}
 
-	systemRouter := router.RouterGroupApp.System
-	exampleRouter := router.RouterGroupApp.Example
-	// 如果想要不使用nginx代理前端网页，可以修改 web/.env.production 下的
-	// VUE_APP_BASE_API = /
-	// VUE_APP_BASE_PATH = http://localhost
-	// 然后执行打包命令 npm run build。在打开下面3行注释
-	// Router.StaticFile("/favicon.ico", "./dist/favicon.ico")
-	// Router.Static("/assets", "./dist/assets")   // dist里面的静态资源
-	// Router.StaticFile("/", "./dist/index.html") // 前端网页入口页面
-
-	Router.StaticFS(global.GVA_CONFIG.Local.StorePath, justFilesFilesystem{http.Dir(global.GVA_CONFIG.Local.StorePath)}) // Router.Use(middleware.LoadTls())  // 如果需要使用https 请打开此中间件 然后前往 core/server.go 将启动模式 更变为 Router.RunTLS("端口","你的cre/pem文件","你的key文件")
-	// 跨域，如需跨域可以打开下面的注释
-	Router.Use(middleware.Cors()) // 直接放行全部跨域请求
-	// Router.Use(middleware.CorsByRules()) // 按照配置的规则放行跨域请求
-	// global.GVA_LOG.Info("use middleware cors")
-	docs.SwaggerInfo.BasePath = global.GVA_CONFIG.System.RouterPrefix
-	Router.GET(global.GVA_CONFIG.System.RouterPrefix+"/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	global.GVA_LOG.Info("register swagger handler")
-	// 方便统一添加路由组前缀 多服务器上线使用
-
-	PublicGroup := Router.Group(global.GVA_CONFIG.System.RouterPrefix)
-	PrivateGroup := Router.Group(global.GVA_CONFIG.System.RouterPrefix)
-
-	PrivateGroup.Use(middleware.JWTAuth()).Use(middleware.CasbinHandler())
-
-	{
-		// 健康监测
-		PublicGroup.GET("/health", func(c *gin.Context) {
-			c.JSON(http.StatusOK, "ok")
-		})
+	// 上传文件静态服务（与配置中的 upload.local.path 对应）
+	// 仅当使用本地存储时生效；云存储文件通过 CDN/OSS 直接访问
+	uploadPath := cfg.cfg.Upload.Local.Path
+	if uploadPath == "" {
+		uploadPath = "./uploads"
 	}
-	{
-		systemRouter.InitBaseRouter(PublicGroup) // 注册基础功能路由 不做鉴权
-		systemRouter.InitInitRouter(PublicGroup) // 自动初始化相关
+	// 图片文件加载接口 —— 支持长缓存（文件名含 MD5 哈希，内容变更即文件名变更）
+	r.GET("/uploads/*filepath", func(c *gin.Context) {
+		fp := c.Param("filepath")
+		if strings.Contains(fp, "..") {
+			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
+		ext := filepath.Ext(fp)
+		switch strings.ToLower(ext) {
+		case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".ico":
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		c.File(filepath.Join(uploadPath, fp))
+	})
+
+	// 安装向导直接挂在根路径（无 /api 前缀，方便前端独立模块）
+	router.InstallRouter(&r.RouterGroup)
+
+	// 业务路由统一在 /api/v1 下，由 InstallGuard 拦截
+	api := r.Group("/api/v1", middleware.InstallGuard())
+	router.BaseRouter(api)   // 登录 / 当前用户 / 当前菜单
+	router.SystemRouter(api) // user / role / menu / api
+	router.PluginRouter(r)   // 已装插件列表 + 插件自身路由
+	return r
+}
+
+// RequestLog 修复一下 RequestLog，需要 time 包
+// 让我们更新 middleware 包中的实现
+func RequestLog(logger log.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+
+		reqLogger := log.FromContext(c.Request.Context())
+		reqLogger.Info("http",
+			"method", c.Request.Method,
+			"path", c.Request.URL.Path,
+			"status", c.Writer.Status(),
+			"cost", time.Since(start),
+			"ip", c.ClientIP(),
+			"user_agent", c.Request.UserAgent(),
+		)
 	}
-
-	{
-		systemRouter.InitApiRouter(PrivateGroup, PublicGroup)               // 注册功能api路由
-		systemRouter.InitJwtRouter(PrivateGroup)                            // jwt相关路由
-		systemRouter.InitUserRouter(PrivateGroup)                           // 注册用户路由
-		systemRouter.InitMenuRouter(PrivateGroup)                           // 注册menu路由
-		systemRouter.InitSystemRouter(PrivateGroup)                         // system相关路由
-		systemRouter.InitSysVersionRouter(PrivateGroup)                     // 发版相关路由
-		systemRouter.InitCasbinRouter(PrivateGroup)                         // 权限相关路由
-		systemRouter.InitAutoCodeRouter(PrivateGroup, PublicGroup)          // 创建自动化代码
-		systemRouter.InitAuthorityRouter(PrivateGroup)                      // 注册角色路由
-		systemRouter.InitSysDictionaryRouter(PrivateGroup)                  // 字典管理
-		systemRouter.InitAutoCodeHistoryRouter(PrivateGroup)                // 自动化代码历史
-		systemRouter.InitSysOperationRecordRouter(PrivateGroup)             // 操作记录
-		systemRouter.InitSysDictionaryDetailRouter(PrivateGroup)            // 字典详情管理
-		systemRouter.InitAuthorityBtnRouterRouter(PrivateGroup)             // 按钮权限管理
-		systemRouter.InitSysExportTemplateRouter(PrivateGroup, PublicGroup) // 导出模板
-		systemRouter.InitSysParamsRouter(PrivateGroup, PublicGroup)         // 参数管理
-		systemRouter.InitSysErrorRouter(PrivateGroup, PublicGroup)          // 错误日志
-		exampleRouter.InitCustomerRouter(PrivateGroup)                      // 客户路由
-		exampleRouter.InitFileUploadAndDownloadRouter(PrivateGroup)         // 文件上传下载功能路由
-		exampleRouter.InitAttachmentCategoryRouterRouter(PrivateGroup)      // 文件上传下载分类
-
-	}
-
-	//插件路由安装
-	InstallPlugin(PrivateGroup, PublicGroup, Router)
-
-	// 注册业务路由
-	initBizRouter(PrivateGroup, PublicGroup)
-
-	global.GVA_ROUTERS = Router.Routes()
-
-	global.GVA_LOG.Info("router register success")
-	return Router
 }

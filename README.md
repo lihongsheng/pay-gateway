@@ -5,8 +5,7 @@
 2. 适配多支付渠道，新增支付渠道按照 sdk 规范适配即可。
 3. 支持单应用配置多微信账户支付。
 4. 支付失败，收银台自动轮询重试支付。
-5. 在应用支持多微信账户应用,开启路由模式，自动屏蔽微信限制支付，限制获取用户openid的微信账户。
-6. 项目基于gin-vue-admin开发,自带管理后台。
+5. 在应用支持多微信账户应用,开启路由模式，自动屏蔽微信限制支付，限制获取用户openid的微信账户
 
 ### 业务流程
 
@@ -26,7 +25,7 @@ participant WxPay as 微信/支付宝..支付渠道
     %% 2. 用户扫码
     User->>PayPage: 2. 微信扫码打开页面
     PayPage->>PayPage: 加载页面基础信息
-  
+
 
     %% 3. 用户输入金额
     User->>PayPage: 3. 输入金额，点击支付（携带UA等信息）
@@ -66,7 +65,7 @@ sequenceDiagram
     %% 2. 用户扫码
     User->>PayPage: 2. 微信扫码打开页面
     PayPage->>PayPage: 加载页面基础信息
-  
+
 
     %% 3. 用户输入金额
     User->>PayPage: 3. 输入金额，点击支付（携带UA等信息）
@@ -79,7 +78,7 @@ sequenceDiagram
     Note over PaySys: 6. 记录支付单&日志
     PaySys->>PaySys: 7. 判断是否可以重试
     PaySys->>PayPage: 9. 返回支付结果
- 
+
     %% 8. 支付重试
     PayPage->>PayPage: 9.1 判断是否是可以重试错误，是刷新页面获取另一个微信账户
     PayPage->>PayPage: 9.2 判断是否刷新后的重试，自动唤起支付。
@@ -109,12 +108,12 @@ sequenceDiagram
     mch->>PaySys:  2. 创建支付单
     Note over PaySys: 记录支付单信息
     PaySys->>mch:  返回支付单信息以及收银台页面
-    
+
 
     %% 2. 引导用户支付
     mch->>User: 3. 引导用户打卡收银台页面
     User->>PayPage: 加载收银台页面
-  
+
 
     %% 3. 加载订单信息
     PayPage->>PaySys: 4. 加载订单标题及金额等信息
