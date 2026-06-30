@@ -1,9 +1,9 @@
 package initialize
 
 import (
-	"github.com/lihongsheng/go-admin/server/global"
-	"github.com/lihongsheng/go-admin/server/log"
-	"github.com/lihongsheng/go-admin/server/plugin"
+	"github.com/lihongsheng/pay-gateway/global"
+	"github.com/lihongsheng/pay-gateway/log"
+	"github.com/lihongsheng/pay-gateway/plugin"
 )
 
 // SyncOnBoot 启动期同步：

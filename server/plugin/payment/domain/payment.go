@@ -1,18 +1,45 @@
 package domain
 
 import (
-	"context"
+  "context"
+  errors2 "errors"
+  "fmt"
+  "github.com/lihongsheng/pay-gateway/global"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/enum"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/errors"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/infrastructure"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/log"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/repo"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/svc"
+  paySdk "github.com/lihongsheng/payment-sdk"
+  "github.com/lihongsheng/payment-sdk/config"
+  "github.com/lihongsheng/payment-sdk/config/proxy"
+  "github.com/lihongsheng/payment-sdk/driver/dto"
+  "github.com/lihongsheng/payment-sdk/driver/iface"
+  "github.com/lihongsheng/payment-sdk/enum/channel"
+  "github.com/lihongsheng/payment-sdk/enum/payment"
+  errors3 "github.com/lihongsheng/payment-sdk/errors"
+  "github.com/redis/go-redis/v9"
+  "go.uber.org/zap"
+  "gorm.io/gorm"
+  "net/http"
+  "net/url"
+  "time"
+)
+"context"
 	errors2 "errors"
 	"fmt"
 	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
-	config2 "github.com/lihongsheng/pay-gateway/plugin/payment/config"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	paySdk "github.com/lihongsheng/payment-sdk"
 	"github.com/lihongsheng/payment-sdk/config"
 	"github.com/lihongsheng/payment-sdk/config/proxy"
@@ -27,24 +54,22 @@ import (
 	"net/url"
 	"time"
 )
-
 type PaymentService interface {
 	Payment(ctx context.Context, payOrder *entity.PaymentOrder, req *public.PaymentOrder, appInfo *model.Application, account *entity.PaymentAccount, selfCallback string) (*public.PaymentOrderResponse, *entity.PaymentOrder, error)
 	Query(ctx context.Context, req *public.QueryPaymentRequest, appInfo *model.Application) (*entity.PaymentOrder, error)
 	Close(ctx context.Context, req public.QueryPaymentRequest, appInfo *model.Application) error
 	Callback(ctx context.Context, req *http.Request, appInfo *model.Application, orderNO string) (detail *dto.CallbackPayDetail, payOrder *entity.PaymentOrder, account *entity.PaymentAccount, err error)
 }
-
 type paymentService struct {
 	svc *svc.ServiceContext
+  redis *redis.Client
 }
-
-func NewPaymentService(svc *svc.ServiceContext) PaymentService {
+func NewPaymentService(svc *svc.ServiceContext,redis *redis.Client) PaymentService {
 	return &paymentService{
 		svc: svc,
+    redis: redis,
 	}
 }
-
 func (s *paymentService) Callback(ctx context.Context, req *http.Request, appInfo *model.Application, orderNO string) (detail *dto.CallbackPayDetail, payOrder *entity.PaymentOrder, account *entity.PaymentAccount, err error) {
 	payOrder, err = s.svc.PaymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
 		OrderNo: orderNO,
@@ -59,13 +84,11 @@ func (s *paymentService) Callback(ctx context.Context, req *http.Request, appInf
 	if err != nil {
 		return nil, nil, nil, errors.WrapCode(errors.ErrPayChannelNotSupport, err)
 	}
-
 	payDri, err := s.buildPayDri(payOrder.PaymentMethod, payOrder.PaymentProduct, appInfo, account)
 	detail, err = payDri.Callback(ctx, req)
 	if err != nil {
 		return nil, nil, nil, errors.WrapError(errors.ErrPayChannelNotSupport, "回调处理失败", err)
 	}
-
 	if payOrder.IsPending() {
 		updates := make(map[string]interface{})
 		updates["out_mch_trade_no"] = detail.TradeNo
@@ -79,7 +102,7 @@ func (s *paymentService) Callback(ctx context.Context, req *http.Request, appInf
 		payOrder.OutMchTradeNo = detail.TradeNo
 		eventInfo := payOrder.GetEvents()
 		if eventInfo != nil {
-			err := s.svc.Event.Publish(ctx, eventInfo, config2.Config.Topic.PaymentStatus)
+			err := s.svc.Event.Publish(ctx, eventInfo, global.Cfg.Payment.Topic.PaymentStatus)
 			if err != nil {
 				log.WithCtx(ctx).Error("发布订单状态失败", zap.Error(err), zap.Any("event", eventInfo))
 			}
@@ -87,7 +110,6 @@ func (s *paymentService) Callback(ctx context.Context, req *http.Request, appInf
 	}
 	return detail, payOrder, account, nil
 }
-
 func (s *paymentService) Close(ctx context.Context, req public.QueryPaymentRequest, appInfo *model.Application) error {
 	payOrder, err := s.svc.PaymentOrderRepo.GetOrderWithCache(ctx, req)
 	if err != nil {
@@ -121,14 +143,13 @@ func (s *paymentService) Close(ctx context.Context, req public.QueryPaymentReque
 		"status_from": "apiClose",
 	})
 	if err != nil {
-		global.GVA_LOG.Error("更新订单为关闭状态失败",
+		zap.L().Error("更新订单为关闭状态失败",
 			zap.String("tradeNo", payOrder.TradeNo),
 			zap.String("mchNo", payOrder.MchNo),
 			zap.Error(err))
 	}
 	return nil
 }
-
 func (s *paymentService) Query(ctx context.Context, req *public.QueryPaymentRequest, appInfo *model.Application) (*entity.PaymentOrder, error) {
 	payOrder, err := s.svc.PaymentOrderRepo.GetOrderWithCache(ctx, *req)
 	if err != nil {
@@ -171,18 +192,17 @@ func (s *paymentService) Query(ctx context.Context, req *public.QueryPaymentRequ
 	}
 	eventInfo := payOrder.GetEvents()
 	if eventInfo != nil {
-		err := s.svc.Event.Publish(ctx, eventInfo, config2.Config.Topic.PaymentStatus)
+		err := s.svc.Event.Publish(ctx, eventInfo, global.Cfg.Payment.Topic.PaymentStatus)
 		if err != nil {
 			log.WithCtx(ctx).Error("发布订单状态失败", zap.Error(err), zap.Any("event", eventInfo))
 		}
 	}
 	return payOrder, nil
 }
-
 func (s *paymentService) Payment(ctx context.Context, payOrder *entity.PaymentOrder, req *public.PaymentOrder, appInfo *model.Application, account *entity.PaymentAccount, selfCallback string) (*public.PaymentOrderResponse, *entity.PaymentOrder, error) {
-	lock, err := global.GVA_REDIS.SetNX(ctx, s.getPaymentLockKey(req.Order.OrderNo, req.AppNo), time.Now().Unix(), enum.PaymentLockExpire).Result()
+	lock, err := s.redis.SetNX(ctx, s.getPaymentLockKey(req.Order.OrderNo, req.AppNo), time.Now().Unix(), enum.PaymentLockExpire).Result()
 	defer func() {
-		global.GVA_REDIS.Del(ctx, s.getPaymentLockKey(req.Order.OrderNo, req.AppNo))
+    s.redis.Del(ctx, s.getPaymentLockKey(req.Order.OrderNo, req.AppNo))
 	}()
 	if !lock && err == nil {
 		return nil, nil, errors.NewError(errors.ErrPayPending, "重复支付，请稍后再试")
@@ -257,12 +277,11 @@ func (s *paymentService) Payment(ctx context.Context, payOrder *entity.PaymentOr
 	}
 	eventInfo := m.GetEvents()
 	if eventInfo != nil {
-		eventErr := s.svc.Event.Publish(ctx, eventInfo, config2.Config.Topic.PaymentStatus)
+		eventErr := s.svc.Event.Publish(ctx, eventInfo, global.Cfg.Payment.Topic.PaymentStatus)
 		if eventErr != nil {
 			l.Error("发布订单状态失败", zap.Error(eventErr), zap.Any("event", eventInfo))
 		}
 	}
-
 	if err != nil {
 		if m.Retry > enum.MaxRetryPaymentLimit {
 			return nil, m, errors.WrapError(errors.ErrPayFail, "支付失败", err)
@@ -285,10 +304,9 @@ func (s *paymentService) Payment(ctx context.Context, payOrder *entity.PaymentOr
 		RedirectURL: m.RedirectURL,
 	}, m, nil
 }
-
 func (s *paymentService) invokeChannelPayment(ctx context.Context, req *public.PaymentOrder, appInfo *model.Application, account *entity.PaymentAccount, tradeNo string, selfCallback string) (*dto.PayResponse, error) {
 	// 测试后删除
-	if global.GVA_CONFIG.Env.IsTest() && account.AccountNo == "P6b5e44d8e7c00" {
+	if global.Cfg.Payment.IsTest() && account.AccountNo == "P6b5e44d8e7c00" {
 		return nil, errors3.ErrorPaymentLimited("此商家的收款功能已被限制", nil)
 	}
 	payDri, err := s.buildPayDri(req.PaymentMethod, req.PaymentProduct, appInfo, account)
@@ -302,7 +320,6 @@ func (s *paymentService) invokeChannelPayment(ctx context.Context, req *public.P
 	log.WithCtx(ctx).Info("支付请求", zap.Any("payReq", payReq))
 	return payDri.Pay(ctx, payReq)
 }
-
 func (s *paymentService) buildPayDri(paymentMethod payment.Payment, paymentProduct payment.PaymentProduct, appInfo *model.Application, account *entity.PaymentAccount) (iface.Pay, error) {
 	opts := []config.Option{
 		config.WithPayment(paymentMethod),
@@ -323,7 +340,6 @@ func (s *paymentService) buildPayDri(paymentMethod payment.Payment, paymentProdu
 	}
 	return payDri, nil
 }
-
 func buildModel(req *public.PaymentOrder, appInfo *model.Application, account *entity.PaymentAccount) *entity.PaymentOrder {
 	result := &entity.PaymentOrder{
 		PaymentAccountNo:     account.AccountNo,
@@ -377,7 +393,6 @@ func buildModel(req *public.PaymentOrder, appInfo *model.Application, account *e
 	}
 	return result
 }
-
 func (s *paymentService) buildChannelPayOrder(req *public.PaymentOrder, appInfo *model.Application, account *entity.PaymentAccount, tradeNo string, selfCallback string) (*dto.PayOrder, error) {
 	request := &dto.PayOrder{
 		Order: dto.Order{
@@ -409,7 +424,6 @@ func (s *paymentService) buildChannelPayOrder(req *public.PaymentOrder, appInfo 
 		RiskFund:       nil,
 		AlipayExtra:    nil,
 	}
-
 	request.NotifyUrl = selfCallback
 	if req.Order.Goods != nil {
 		for _, v := range req.Order.Goods {
@@ -439,11 +453,9 @@ func (s *paymentService) buildChannelPayOrder(req *public.PaymentOrder, appInfo 
 	}
 	return request, nil
 }
-
 func (s *paymentService) getPaymentLockKey(orderNo, appNo string) string {
 	return fmt.Sprintf(enum.CacheLockPayment, orderNo, appNo)
 }
-
 func getNotifyUrl(appInfo *model.Application) (*url.URL, error) {
 	var parse *url.URL
 	var err error
@@ -452,9 +464,9 @@ func getNotifyUrl(appInfo *model.Application) (*url.URL, error) {
 		if err != nil {
 			return nil, errors.WrapError(errors.ErrCodeInvalidParam, "构建支付回调地址失败", err)
 		}
-		parse = parse.JoinPath(config2.Config.ProxyNotifyPrefix)
+		parse = parse.JoinPath(config.Config.ProxyNotifyPrefix)
 	} else {
-		parse, err = url.Parse(config2.Config.ApiHost)
+		parse, err = url.Parse(config.Config.ApiHost)
 		if err != nil {
 			return nil, errors.WrapError(errors.ErrCodeInvalidParam, "构建支付回调地址失败", err)
 		}

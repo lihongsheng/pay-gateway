@@ -1,9 +1,9 @@
 package router
 
 import (
-	"github.com/lihongsheng/go-admin/server/api/v1/base"
-	"github.com/lihongsheng/go-admin/server/api/v1/system"
-	"github.com/lihongsheng/go-admin/server/middleware"
+	"github.com/lihongsheng/pay-gateway/api/v1/base"
+	"github.com/lihongsheng/pay-gateway/api/v1/system"
+	"github.com/lihongsheng/pay-gateway/middleware"
 
 	"github.com/gin-gonic/gin"
 )

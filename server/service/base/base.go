@@ -4,13 +4,13 @@ package base
 import (
 	"errors"
 
-	dtoBase "github.com/lihongsheng/go-admin/server/dto/base"
-	"github.com/lihongsheng/go-admin/server/enum"
-	"github.com/lihongsheng/go-admin/server/global"
-	"github.com/lihongsheng/go-admin/server/model/system"
-	repoSys "github.com/lihongsheng/go-admin/server/repo/system"
-	"github.com/lihongsheng/go-admin/server/utils/captcha"
-	"github.com/lihongsheng/go-admin/server/utils/jwt"
+	dtoBase "github.com/lihongsheng/pay-gateway/dto/base"
+	"github.com/lihongsheng/pay-gateway/enum"
+	"github.com/lihongsheng/pay-gateway/global"
+	"github.com/lihongsheng/pay-gateway/model/system"
+	repoSys "github.com/lihongsheng/pay-gateway/repo/system"
+	"github.com/lihongsheng/pay-gateway/utils/captcha"
+	"github.com/lihongsheng/pay-gateway/utils/jwt"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -73,13 +73,13 @@ func (s *service) Login(req dtoBase.LoginReq) (*dtoBase.LoginResp, error) {
 	for _, r := range u.Roles {
 		roleIDs = append(roleIDs, int64(r.ID))
 	}
-		token, err := jwt.Sign(jwt.User{
-			ID:         u.ID,
-			Username:   u.Username,
-			Role:       roleIDs,
-			MchID:      u.MchID,
-			SystemType: u.SystemType,
-		}, global.Cfg.JWT)
+	token, err := jwt.Sign(jwt.User{
+		ID:         u.ID,
+		Username:   u.Username,
+		Role:       roleIDs,
+		MchID:      u.MchID,
+		SystemType: u.SystemType,
+	}, global.Cfg.JWT)
 	if err != nil {
 		return nil, err
 	}

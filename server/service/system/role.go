@@ -2,11 +2,11 @@ package system
 
 import (
 	"encoding/json"
-	dtoSys "github.com/lihongsheng/go-admin/server/dto/system"
-	"github.com/lihongsheng/go-admin/server/enum"
-	"github.com/lihongsheng/go-admin/server/model/system"
-	repoSys "github.com/lihongsheng/go-admin/server/repo/system"
-	casbinUtil "github.com/lihongsheng/go-admin/server/utils/casbin"
+	dtoSys "github.com/lihongsheng/pay-gateway/dto/system"
+	"github.com/lihongsheng/pay-gateway/enum"
+	"github.com/lihongsheng/pay-gateway/model/system"
+	repoSys "github.com/lihongsheng/pay-gateway/repo/system"
+	casbinUtil "github.com/lihongsheng/pay-gateway/utils/casbin"
 )
 
 // RoleService 角色业务接口
@@ -112,7 +112,6 @@ func (s *roleService) Auth(req dtoSys.RoleAuthReq) error {
 			items = append(items, [2]string{r.Path, r.Method})
 		}
 	}
-
 
 	return s.casbin.ReplaceRolePolicies(req.RoleID, items)
 }

@@ -1,7 +1,7 @@
 package system
 
 import (
-	"github.com/lihongsheng/go-admin/server/model/system"
+	"github.com/lihongsheng/pay-gateway/model/system"
 
 	"gorm.io/gorm"
 )

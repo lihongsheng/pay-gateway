@@ -1,7 +1,7 @@
 package router
 
 import (
-	"github.com/lihongsheng/go-admin/server/api/v1/install"
+	"github.com/lihongsheng/pay-gateway/api/v1/install"
 
 	"github.com/gin-gonic/gin"
 )

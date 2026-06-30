@@ -20,10 +20,10 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/lihongsheng/go-admin/server/core/installer"
-	"github.com/lihongsheng/go-admin/server/enum"
-	"github.com/lihongsheng/go-admin/server/model/system"
-	"github.com/lihongsheng/go-admin/server/utils/casbin"
+	"github.com/lihongsheng/pay-gateway/core/installer"
+	"github.com/lihongsheng/pay-gateway/enum"
+	"github.com/lihongsheng/pay-gateway/model/system"
+	"github.com/lihongsheng/pay-gateway/utils/casbin"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -37,6 +37,7 @@ type Plugin interface {
 	Menus() []system.SysMenu     // 注入菜单树（含 catalog/menu/button；按 Name 幂等）；API 规则通过菜单 ApiRules 字段注入
 	RegisterRoute(g *gin.Engine) // 注册自身路由（已在 /api/v1/plugin/<name> 下）
 	SeedTable(db *gorm.DB) error // 插件自身业务表的初始数据；仅在目标表为空时调用
+	Init()                       // 初始化插件
 }
 
 var (

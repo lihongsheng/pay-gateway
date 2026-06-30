@@ -2,7 +2,7 @@ package system
 
 import (
 	"errors"
-	"github.com/lihongsheng/go-admin/server/enum"
+	"github.com/lihongsheng/pay-gateway/enum"
 )
 
 type MchCreateRequest struct {

@@ -1,30 +1,25 @@
 package api
 
 import (
+	"fmt"
+
 	"github.com/gin-gonic/gin"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/service/dto"
-	"github.com/lihongsheng/pay-gateway/utils"
+	payDto "github.com/lihongsheng/pay-gateway/plugin/payment/dto"
+	"github.com/lihongsheng/pay-gateway/utils/jwt"
 )
 
-type ApiGroup struct {
-	MchApi
-	AppApi
-	AccountApi
-	AggregateApi
-	PublicPaymentApi
-	PublicRefundApi
-	TradeApi
-	CashierApi
-	DashboardApi
-}
-
-var ApiGroupApp = new(ApiGroup)
-
-func GetUserInfo(c *gin.Context) *dto.User {
-	claims, _ := utils.GetClaims(c)
-	return &dto.User{
-		UserID:    int64(claims.BaseClaims.ID),
-		UserType:  claims.UserType,
-		HaveMchNo: claims.HaveMchNO,
+func GetUserInfo(c *gin.Context) *payDto.User {
+	u, err := jwt.GetUser(c.Request.Context())
+	if err != nil {
+		return &payDto.User{}
+	}
+	var haveMchNo string
+	if u.MchID > 0 {
+		haveMchNo = fmt.Sprintf("%d", u.MchID)
+	}
+	return &payDto.User{
+		UserID:    int64(u.ID),
+		UserType:  u.SystemType,
+		HaveMchNo: haveMchNo,
 	}
 }

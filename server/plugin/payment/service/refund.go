@@ -4,24 +4,26 @@ import (
 	"context"
 	errors2 "errors"
 	"fmt"
+	"github.com/redis/go-redis/v9"
+	"net/http"
+	"time"
+
 	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
-	config2 "github.com/lihongsheng/pay-gateway/plugin/payment/config"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/event"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	enum2 "github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/infrastructure"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/utils"
 	paySdk "github.com/lihongsheng/payment-sdk"
 	channel2 "github.com/lihongsheng/payment-sdk/enum/channel"
 	refund2 "github.com/lihongsheng/payment-sdk/enum/refund"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
-	"net/http"
-	"time"
 )
 
 type RefundService interface {
@@ -35,20 +37,41 @@ type RefundService interface {
 }
 
 type refundService struct {
-	svc    *svc.ServiceContext
-	domain *domain.ServiceGroup
+	paymentOrderRepo repo.PaymentOrderRepo
+	refundRepo       repo.RefundRepo
+	appRepo          repo.ApplicationRepo
+	notifyRepo       repo.NotifyRepo
+	event            infrastructure.Event
+	domain           *domain.ServiceGroup
+	redis            *redis.Client
 }
 
-func NewRefundService(svc *svc.ServiceContext, domain *domain.ServiceGroup) RefundService {
+func NewRefundService(
+	paymentOrderRepo repo.PaymentOrderRepo,
+	refundRepo repo.RefundRepo,
+	appRepo repo.ApplicationRepo,
+	notifyRepo repo.NotifyRepo,
+	event infrastructure.Event,
+	domain *domain.ServiceGroup,
+	redis *redis.Client,
+) RefundService {
 	return &refundService{
-		svc:    svc,
-		domain: domain,
+		paymentOrderRepo: paymentOrderRepo,
+		refundRepo:       refundRepo,
+		appRepo:          appRepo,
+		notifyRepo:       notifyRepo,
+		event:            event,
+		domain:           domain,
+		redis:            redis,
 	}
 }
 
+// DefaultRefund 包级单例
+var DefaultRefund RefundService
+
 func (s *refundService) NotifyHandler(ctx context.Context, req event.RefundNotifyRetryEvent) error {
 	l := log.WithCtx(ctx)
-	refund, err := s.svc.RefundRepo.GetFromCache(ctx, public.RefundQueryRequest{
+	refund, err := s.refundRepo.GetFromCache(ctx, public.RefundQueryRequest{
 		RefundNo: req.RefundNo,
 		AppNo:    req.AppNo,
 		MchNo:    req.MchNo,
@@ -65,15 +88,15 @@ func (s *refundService) GenNotifyHandler(ctx context.Context, req event.RefundOr
 		return nil
 	}
 	key := "RefundNotify:" + req.EventId
-	lock, err := global.GVA_REDIS.SetNX(ctx, key, time.Now().Unix(), enum2.PaymentLockExpire).Result()
+	lock, err := s.redis.SetNX(ctx, key, time.Now().Unix(), enum2.PaymentLockExpire).Result()
 	defer func() {
-		global.GVA_REDIS.Del(ctx, key)
+		s.redis.Del(ctx, key)
 	}()
 	if !lock && err == nil {
 		return errors.NewError(errors.ErrPayPending, "已在处理，请稍后再试")
 	}
 	l := log.WithCtx(ctx)
-	refund, err := s.svc.RefundRepo.GetFromCache(ctx, public.RefundQueryRequest{
+	refund, err := s.refundRepo.GetFromCache(ctx, public.RefundQueryRequest{
 		RefundNo: req.RefundNo,
 		AppNo:    req.AppNo,
 		MchNo:    req.MchNo,
@@ -85,13 +108,13 @@ func (s *refundService) GenNotifyHandler(ctx context.Context, req event.RefundOr
 		l.Warn("回调地址不存在", zap.Any("req", req))
 		return nil
 	}
-	notify, err := s.svc.NotifyRepo.Get(ctx, req.MchNo, req.AppNo, enum2.NotifyType_Payment, req.RefundNo)
+	notify, err := s.notifyRepo.Get(ctx, req.MchNo, req.AppNo, enum2.NotifyType_Payment, req.RefundNo)
 	if err != nil && !errors2.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
 	if notify == nil {
 		notify = s.buildNotifyRecord(req, refund)
-		err := s.svc.NotifyRepo.Save(ctx, notify)
+		err := s.notifyRepo.Save(ctx, notify)
 		if err != nil {
 			return err
 		}
@@ -107,16 +130,16 @@ func (s *refundService) notify(ctx context.Context, l *zap.Logger, refund *model
 	}
 	if err != nil || (resp != nil && resp.StatusCode != http.StatusOK) {
 		if notifyCount < enum2.NotifyRetryMax {
-			_ = s.svc.NotifyRepo.Retry(ctx, notifyId, time.Now().Add(time.Duration(notifyCount+1)*enum2.NotifyRetryStep))
+			_ = s.notifyRepo.Retry(ctx, notifyId, time.Now().Add(time.Duration(notifyCount+1)*enum2.NotifyRetryStep))
 			return err
 		} else {
-			_ = s.svc.NotifyRepo.UpdateStatus(ctx, notifyId, enum2.NotifyStatus_Fail, "已达最大重试次数")
-			_ = s.svc.RefundRepo.ConfirmNotifyStatus(ctx, refund.ID, enum2.NotifyStatus_Fail)
+			_ = s.notifyRepo.UpdateStatus(ctx, notifyId, enum2.NotifyStatus_Fail, "已达最大重试次数")
+			_ = s.refundRepo.ConfirmNotifyStatus(ctx, refund.ID, enum2.NotifyStatus_Fail)
 		}
 	}
 	if resp != nil && resp.StatusCode == http.StatusOK {
-		err = s.svc.NotifyRepo.UpdateStatus(ctx, notifyId, enum2.NotifyStatus_Success, fmt.Sprintf("httpStatus:%d", http.StatusOK))
-		_ = s.svc.RefundRepo.ConfirmNotifyStatus(ctx, refund.ID, enum2.NotifyStatus_Success)
+		err = s.notifyRepo.UpdateStatus(ctx, notifyId, enum2.NotifyStatus_Success, fmt.Sprintf("httpStatus:%d", http.StatusOK))
+		_ = s.refundRepo.ConfirmNotifyStatus(ctx, refund.ID, enum2.NotifyStatus_Success)
 	}
 	return err
 }
@@ -159,7 +182,7 @@ func (s *refundService) PublishCallback(ctx context.Context, req *http.Request, 
 	if err != nil {
 		return "", err
 	}
-	err = s.svc.Event.Publish(ctx, eventInfo, config2.Config.Topic.RefundCallback)
+	err = s.event.Publish(ctx, eventInfo, global.Cfg.Payment.Topic.RefundCallback)
 	if err != nil {
 		l.Error("支付回调处理失败", zap.Error(err), zap.String("refundTradeNo", refundTradeNo), zap.String("app_no", appNo), zap.String("mch_no", mchNo))
 		return "", err
@@ -169,7 +192,7 @@ func (s *refundService) PublishCallback(ctx context.Context, req *http.Request, 
 
 func (s *refundService) Callback(ctx context.Context, req *http.Request, appNo string, refundTradeNo string) (string, error) {
 	l := log.WithCtx(ctx)
-	appInfo, err := s.svc.AppRepo.GetByAppNoFormCache(ctx, appNo)
+	appInfo, err := s.appRepo.GetByAppNoFormCache(ctx, appNo)
 	if err != nil {
 		l.Error("应用不存在", zap.Error(err), zap.Any("app_no", appNo))
 		return "", errors.WrapError(errors.ErrAppNotExist, "应用不存在", err)
@@ -189,9 +212,9 @@ func (s *refundService) Query(ctx context.Context, req *public.RefundQueryReques
 		return nil, err
 	}
 	l := log.WithCtx(ctx)
-	appInfo, err := getAppInfoFromCtx(ctx, req.AppNo, s.svc)
+	appInfo, err := getAppInfoFromCtx(ctx, req.AppNo, s.appRepo)
 	if err != nil {
-		global.GVA_LOG.Error("应用不存在", zap.Error(err), zap.Any("req", req))
+		l.Error("应用不存在", zap.Error(err), zap.Any("req", req))
 		return nil, errors.WrapError(errors.ErrAppNotExist, "应用不存在", err)
 	}
 	req.MchNo = appInfo.MchNo
@@ -208,9 +231,9 @@ func (s *refundService) Refund(ctx context.Context, req *public.RefundRequest) (
 		return nil, err
 	}
 	l := log.WithCtx(ctx)
-	appInfo, err := getAppInfoFromCtx(ctx, req.AppNo, s.svc)
+	appInfo, err := getAppInfoFromCtx(ctx, req.AppNo, s.appRepo)
 	if err != nil {
-		global.GVA_LOG.Error("应用不存在", zap.Error(err), zap.Any("req", req))
+		l.Error("应用不存在", zap.Error(err), zap.Any("req", req))
 		return nil, errors.WrapError(errors.ErrAppNotExist, "应用不存在", err)
 	}
 	req.MchNo = appInfo.MchNo

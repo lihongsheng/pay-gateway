@@ -10,12 +10,12 @@ import (
 	"errors"
 	"time"
 
-	"github.com/lihongsheng/go-admin/server/config"
-	"github.com/lihongsheng/go-admin/server/core/installer"
-	dtoInstall "github.com/lihongsheng/go-admin/server/dto/install"
-	"github.com/lihongsheng/go-admin/server/global"
-	"github.com/lihongsheng/go-admin/server/log"
-	casbinUtil "github.com/lihongsheng/go-admin/server/utils/casbin"
+	"github.com/lihongsheng/pay-gateway/config"
+	"github.com/lihongsheng/pay-gateway/core/installer"
+	dtoInstall "github.com/lihongsheng/pay-gateway/dto/install"
+	"github.com/lihongsheng/pay-gateway/global"
+	"github.com/lihongsheng/pay-gateway/log"
+	casbinUtil "github.com/lihongsheng/pay-gateway/utils/casbin"
 
 	"gorm.io/gorm"
 )

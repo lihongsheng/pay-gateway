@@ -1,8 +1,8 @@
 package system
 
 import (
-	"github.com/lihongsheng/go-admin/server/enum"
-	"github.com/lihongsheng/go-admin/server/model/system"
+	"github.com/lihongsheng/pay-gateway/enum"
+	"github.com/lihongsheng/pay-gateway/model/system"
 )
 
 // RoleCreateReq 新增角色
@@ -46,9 +46,9 @@ type RoleAuthReq struct {
 // RoleAuthDetailResp 角色已分配的菜单 id 列表 + 默认首页路由 + 系统类型
 // (API 权限已合并到菜单 api_rules 中，不再单独返回)
 type RoleAuthDetailResp struct {
-	MenuIDs       []uint           `json:"menu_ids"`
-	DefaultRouter string           `json:"default_router"`
-	SystemType    enum.SystemType  `json:"system_type"`
+	MenuIDs       []uint          `json:"menu_ids"`
+	DefaultRouter string          `json:"default_router"`
+	SystemType    enum.SystemType `json:"system_type"`
 }
 
 // RoleSetDefaultRouterReq 设置角色默认首页路由

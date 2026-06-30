@@ -4,25 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/admin"
+	"time"
+
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/dao"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/utils"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 	"sync"
-	"time"
 )
 
 type PaymentAccountRepo interface {
 	GetFormCache(ctx context.Context, id int64) (*entity.PaymentAccount, error)
 	GetByAccountNoFormCache(ctx context.Context, accNo string) (*entity.PaymentAccount, error)
-	Save(ctx context.Context, app *admin.PaymentAccountCreateRequest, tx *gorm.DB) error
+	Save(ctx context.Context, app *dto.PaymentAccountCreateRequest, tx *gorm.DB) error
 	GetByAppNo(ctx context.Context, appNo string, status []enum.MchStatus) ([]*entity.PaymentAccount, error)
 	GetOnlyAppNO(ctx context.Context, appNo []string) ([]*model.PaymentAccount, error)
 	GetOnlyAccountNo(ctx context.Context, accNo []string) ([]*model.PaymentAccount, error)
@@ -32,12 +32,16 @@ type PaymentAccountRepo interface {
 }
 
 type paymentAccountRepoImpl struct {
+	db            *gorm.DB
+	rdb           *redis.Client
 	localMapCache *localMapCache
 	singleflight  *singleflight.Group
 }
 
-func NewPaymentAccountRepo() PaymentAccountRepo {
+func NewPaymentAccountRepo(db *gorm.DB, rdb *redis.Client) PaymentAccountRepo {
 	return &paymentAccountRepoImpl{
+		db:            db,
+		rdb:           rdb,
 		localMapCache: NewLocalMapCache(),
 		singleflight:  &singleflight.Group{},
 	}
@@ -77,13 +81,12 @@ func (p *paymentAccountRepoImpl) RefreshAppAccountsCache(ctx context.Context, ap
 }
 
 func (p *paymentAccountRepoImpl) SetPayValidateSuccess(ctx context.Context, accNo string) error {
-	_, err := dao.PaymentAccount.WithContext(ctx).Where(dao.PaymentAccount.AccountNo.Eq(accNo)).Update(dao.PaymentAccount.ValidateStatus, 1)
-	return err
+	return p.db.WithContext(ctx).Model(&model.PaymentAccount{}).Where("account_no = ?", accNo).Update("validate_status", 1).Error
 }
 
 func (p *paymentAccountRepoImpl) GetOnlyAccountNo(ctx context.Context, accNo []string) ([]*model.PaymentAccount, error) {
 	var app []*model.PaymentAccount
-	err := global.GVA_PAY_DB.WithContext(ctx).Where("account_no in (?)", accNo).Find(&app).Error
+	err := p.db.WithContext(ctx).Where("account_no in (?)", accNo).Find(&app).Error
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +95,7 @@ func (p *paymentAccountRepoImpl) GetOnlyAccountNo(ctx context.Context, accNo []s
 
 func (p *paymentAccountRepoImpl) GetOnlyAppNO(ctx context.Context, appNo []string) ([]*model.PaymentAccount, error) {
 	var app []*model.PaymentAccount
-	err := global.GVA_PAY_DB.WithContext(ctx).Where("app_no in (?)", appNo).Find(&app).Error
+	err := p.db.WithContext(ctx).Where("app_no in (?)", appNo).Find(&app).Error
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +104,7 @@ func (p *paymentAccountRepoImpl) GetOnlyAppNO(ctx context.Context, appNo []strin
 
 func (p *paymentAccountRepoImpl) GetByAppNo(ctx context.Context, appNo string, status []enum.MchStatus) ([]*entity.PaymentAccount, error) {
 	var app []*model.PaymentAccount
-	query := global.GVA_PAY_DB.WithContext(ctx).Where("app_no = ?", appNo)
+	query := p.db.WithContext(ctx).Where("app_no = ?", appNo)
 	if len(status) > 0 {
 		query = query.Where("status in ?", status)
 	}
@@ -115,7 +118,7 @@ func (p *paymentAccountRepoImpl) GetByAppNo(ctx context.Context, appNo string, s
 	}
 	return entities, nil
 }
-func (p *paymentAccountRepoImpl) Save(ctx context.Context, appReq *admin.PaymentAccountCreateRequest, tx *gorm.DB) error {
+func (p *paymentAccountRepoImpl) Save(ctx context.Context, appReq *dto.PaymentAccountCreateRequest, tx *gorm.DB) error {
 	var account *model.PaymentAccount
 	var err error
 	var deleteMethods []int64
@@ -158,7 +161,7 @@ func (p *paymentAccountRepoImpl) Save(ctx context.Context, appReq *admin.Payment
 		}
 		account.PaymentMethod = nil
 	}
-	global.GVA_REDIS.Del(ctx, p.getCacheKeys(ctx, account)...)
+	p.rdb.Del(ctx, p.getCacheKeys(ctx, account)...)
 	return err
 }
 
@@ -169,7 +172,7 @@ func (p *paymentAccountRepoImpl) getCacheKeys(ctx context.Context, account *mode
 	}
 }
 
-func (p *paymentAccountRepoImpl) buildUpdate(account *model.PaymentAccount, appReq *admin.PaymentAccountCreateRequest) (*model.PaymentAccount, []int64) {
+func (p *paymentAccountRepoImpl) buildUpdate(account *model.PaymentAccount, appReq *dto.PaymentAccountCreateRequest) (*model.PaymentAccount, []int64) {
 	// 如果记录已存在，更新现有记录
 	account.Name = appReq.Name
 	account.Remark = appReq.Remark
@@ -216,7 +219,7 @@ func (p *paymentAccountRepoImpl) buildUpdate(account *model.PaymentAccount, appR
 	return account, deleteMethods
 }
 
-func (p *paymentAccountRepoImpl) buildCreate(appReq *admin.PaymentAccountCreateRequest) *model.PaymentAccount {
+func (p *paymentAccountRepoImpl) buildCreate(appReq *dto.PaymentAccountCreateRequest) *model.PaymentAccount {
 	account := &model.PaymentAccount{
 		Name:           appReq.Name,
 		Remark:         appReq.Remark,
@@ -246,7 +249,7 @@ func (p *paymentAccountRepoImpl) buildCreate(appReq *admin.PaymentAccountCreateR
 
 func (p *paymentAccountRepoImpl) get(ctx context.Context, Id int64) (*model.PaymentAccount, error) {
 	var app *model.PaymentAccount
-	err := global.GVA_PAY_DB.WithContext(ctx).Where("id = ?", Id).Preload("PaymentMethod").First(&app).Error
+	err := p.db.WithContext(ctx).Where("id = ?", Id).Preload("PaymentMethod").First(&app).Error
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +258,7 @@ func (p *paymentAccountRepoImpl) get(ctx context.Context, Id int64) (*model.Paym
 
 func (p *paymentAccountRepoImpl) GetFormCache(ctx context.Context, id int64) (*entity.PaymentAccount, error) {
 	cacheKey := p.getCacheIdKey(id)
-	cacheData, _ := global.GVA_REDIS.Get(ctx, cacheKey).Result()
+	cacheData, _ := p.rdb.Get(ctx, cacheKey).Result()
 	var app entity.PaymentAccount
 	if cacheData != "" {
 		_ = json.Unmarshal([]byte(cacheData), &app)
@@ -268,7 +271,7 @@ func (p *paymentAccountRepoImpl) GetFormCache(ctx context.Context, id int64) (*e
 		return nil, err
 	}
 	result := p.modelToEntity(m, m.PaymentMethod)
-	global.GVA_REDIS.Set(ctx, cacheKey, result, enum.ApplicationInfoCacheExpire)
+	p.rdb.Set(ctx, cacheKey, result, enum.ApplicationInfoCacheExpire)
 	return result, nil
 }
 
@@ -281,7 +284,7 @@ func (p *paymentAccountRepoImpl) getCacheNoKey(accNo string) string {
 
 func (p *paymentAccountRepoImpl) GetByAccountNoFormCache(ctx context.Context, accNo string) (*entity.PaymentAccount, error) {
 	cacheKey := p.getCacheNoKey(accNo)
-	cacheData, _ := global.GVA_REDIS.Get(ctx, cacheKey).Result()
+	cacheData, _ := p.rdb.Get(ctx, cacheKey).Result()
 	var appEntity entity.PaymentAccount
 	if cacheData != "" {
 		_ = json.Unmarshal([]byte(cacheData), &appEntity)
@@ -290,17 +293,17 @@ func (p *paymentAccountRepoImpl) GetByAccountNoFormCache(ctx context.Context, ac
 		}
 	}
 	var app *model.PaymentAccount
-	err := global.GVA_PAY_DB.WithContext(ctx).Where("account_no = ?", accNo).First(&app).Error
+	err := p.db.WithContext(ctx).Where("account_no = ?", accNo).First(&app).Error
 	if err != nil {
 		return nil, err
 	}
 	var paymentMethods []*model.PaymentMethod
-	err = global.GVA_PAY_DB.WithContext(ctx).Where("payment_account_id = ?", app.ID).Find(&paymentMethods).Error
+	err = p.db.WithContext(ctx).Where("payment_account_id = ?", app.ID).Find(&paymentMethods).Error
 	if err != nil {
 		return nil, err
 	}
 	result := p.modelToEntity(app, paymentMethods)
-	global.GVA_REDIS.Set(ctx, cacheKey, result, enum.ApplicationInfoCacheExpire)
+	p.rdb.Set(ctx, cacheKey, result, enum.ApplicationInfoCacheExpire)
 	return result, nil
 }
 

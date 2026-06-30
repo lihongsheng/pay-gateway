@@ -1,8 +1,8 @@
 package system
 
 import (
-	"github.com/lihongsheng/go-admin/server/enum"
-	"github.com/lihongsheng/go-admin/server/model/system"
+	"github.com/lihongsheng/pay-gateway/enum"
+	"github.com/lihongsheng/pay-gateway/model/system"
 )
 
 // MenuCreateReq 新增菜单

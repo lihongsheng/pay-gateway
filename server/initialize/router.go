@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lihongsheng/go-admin/server/config"
-	"github.com/lihongsheng/go-admin/server/log"
-	"github.com/lihongsheng/go-admin/server/middleware"
-	"github.com/lihongsheng/go-admin/server/router"
+	"github.com/lihongsheng/pay-gateway/config"
+	"github.com/lihongsheng/pay-gateway/log"
+	"github.com/lihongsheng/pay-gateway/middleware"
+	"github.com/lihongsheng/pay-gateway/router"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"

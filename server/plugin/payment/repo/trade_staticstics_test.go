@@ -3,7 +3,7 @@ package repo
 import (
 	"fmt"
 	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/config"
+	"github.com/lihongsheng/pay-gateway/config"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -27,10 +27,10 @@ func testInit() {
 		},
 	})
 
-	global.GVA_PAY_DB = db
-	global.GVA_LOG = zap.NewExample()
-	config.Config.Salt = "1234561234561234"
-	global.GVA_REDIS = redis.NewClient(&redis.Options{
+	global.DB = db
+	zap.L() = zap.NewExample()
+	global.Cfg.Payment.Salt = "1234561234561234"
+	global.Redis = redis.NewClient(&redis.Options{
 		Addr:            "47.110.88.165:6813",
 		Username:        "",
 		Password:        "f392Vt3e7O", // no password set
@@ -43,10 +43,10 @@ func testInit() {
 		MaxRetryBackoff: 128 * time.Millisecond,
 		DialTimeout:     3 * time.Second,
 	})
-	config.Config.Salt = "17K9mP2n08rT4vY9"
-	config.Config.WebHost = "https://test.web.payment.jianxindianzi.com"
-	config.Config.ApiHost = "https://test.api.payment.jianxindianzi.com"
-	config.Config.ProxyNotifyPrefix = "/sslab"
+	global.Cfg.Payment.Salt = "17K9mP2n08rT4vY9"
+	global.Cfg.Payment.WebHost = "https://test.web.payment.jianxindianzi.com"
+	global.Cfg.Payment.ApiHost = "https://test.api.payment.jianxindianzi.com"
+	global.Cfg.Payment.ProxyNotifyPrefix = "/sslab"
 }
 func TestTradeStaticsRepoImpl_Save(t *testing.T) {
 	testInit()
@@ -54,7 +54,7 @@ func TestTradeStaticsRepoImpl_Save(t *testing.T) {
 	loc, _ := time.LoadLocation("Asia/Shanghai") // 东八区
 	// 方式1：带时区解析
 	tt, _ := time.ParseInLocation(time.DateTime, "2026-02-27 16:36:39", loc)
-	tradeStaticsRepo := NewTradeStaticsRepo()
+	tradeStaticsRepo := NewTradeStaticsRepo(global.DB)
 	fmt.Println(tt)
 	d := &model.TradeStatistic{
 		ID:              0,
@@ -69,13 +69,13 @@ func TestTradeStaticsRepoImpl_Save(t *testing.T) {
 		RefundOrder:     0,
 		RefundAmount:    0,
 	}
-	err := tradeStaticsRepo.Save(nil, d, global.GVA_PAY_DB)
+	err := tradeStaticsRepo.Save(nil, d, global.DB)
 	assert.NoError(t, err)
 }
 
 func TestTradeStaticsRepoImpl_Get(t *testing.T) {
 	testInit()
-	tradeStaticsRepo := NewTradeStaticsRepo()
+	tradeStaticsRepo := NewTradeStaticsRepo(global.DB)
 	d, err := tradeStaticsRepo.Get(nil, "M4954d4475f800", "A4966c7e946c00", time.Now().Add(-time.Hour*24*7), time.Now())
 	assert.NoError(t, err)
 	fmt.Println(d)
@@ -83,7 +83,7 @@ func TestTradeStaticsRepoImpl_Get(t *testing.T) {
 
 func TestTradeStaticsRepoImpl_CountGroup(t *testing.T) {
 	testInit()
-	tradeStaticsRepo := NewTradeStaticsRepo()
+	tradeStaticsRepo := NewTradeStaticsRepo(global.DB)
 	d, err := tradeStaticsRepo.CountGroup(nil, time.Now().Add(-time.Hour*24*7), time.Now())
 	assert.NoError(t, err)
 	fmt.Println(fmt.Sprintf("d: %+v", d))

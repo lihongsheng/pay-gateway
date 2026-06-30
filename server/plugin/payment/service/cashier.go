@@ -5,16 +5,17 @@ import (
 	errors2 "errors"
 	"fmt"
 	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
-	config2 "github.com/lihongsheng/pay-gateway/plugin/payment/config"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/infrastructure"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/service/dto"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
+	"github.com/redis/go-redis/v9"
 	"github.com/lihongsheng/payment-sdk/enum/payment"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -35,16 +36,34 @@ type CashierService interface {
 }
 
 type cashierService struct {
-	svc    *svc.ServiceContext
-	domain *domain.ServiceGroup
+	appRepo            repo.ApplicationRepo
+	paymentAccountRepo repo.PaymentAccountRepo
+	paymentOrderRepo   repo.PaymentOrderRepo
+	eventPublisher     infrastructure.Event
+	domainPayment      domain.PaymentService
+	redis              *redis.Client
 }
 
-func NewCashierService(svc *svc.ServiceContext, domain *domain.ServiceGroup) CashierService {
+func NewCashierService(
+	appRepo repo.ApplicationRepo,
+	paymentAccountRepo repo.PaymentAccountRepo,
+	paymentOrderRepo repo.PaymentOrderRepo,
+	eventPublisher infrastructure.Event,
+	domainPayment domain.PaymentService,
+	redis *redis.Client,
+) CashierService {
 	return &cashierService{
-		svc:    svc,
-		domain: domain,
+		appRepo:            appRepo,
+		paymentAccountRepo: paymentAccountRepo,
+		paymentOrderRepo:   paymentOrderRepo,
+		eventPublisher:     eventPublisher,
+		domainPayment:      domainPayment,
+		redis:              redis,
 	}
 }
+
+// DefaultCashier 包级单例
+var DefaultCashier CashierService
 
 func (s *cashierService) Query(ctx context.Context, req *public.CashierQueryOrder) (*public.PaymentOrderDetail, error) {
 	l := log.WithCtx(ctx)
@@ -53,13 +72,13 @@ func (s *cashierService) Query(ctx context.Context, req *public.CashierQueryOrde
 		l.Error("cashierQuery", zap.Error(err), zap.Any("token", req))
 		return nil, err
 	}
-	appInfo, err := s.svc.AppRepo.GetByAppNoFormCache(ctx, aggregateToken.AppNo)
+	appInfo, err := s.appRepo.GetByAppNoFormCache(ctx, aggregateToken.AppNo)
 	if err != nil {
 		l.Error("cashierQuery", zap.Error(err), zap.String("aggregateToken.AppNo", aggregateToken.AppNo))
 		return nil, errors.NewError(errors.ErrCodeInvalidParam, "token无效")
 	}
 	// 已有支付成功订单
-	payOrder, err := s.svc.PaymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
+	payOrder, err := s.paymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
 		OrderNo: req.OrderNo,
 		TradeNo: "",
 		AppNo:   appInfo.AppNo,
@@ -84,21 +103,21 @@ func (s *cashierService) Create(ctx context.Context, req *public.CashierCreateOr
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	appInfo, err := getAppInfoFromCtx(ctx, req.AppNo, s.svc)
+	appInfo, err := getAppInfoFromCtx(ctx, req.AppNo, s.appRepo)
 	if err != nil {
 		l.Error("CashierPayment get app info fail", zap.Error(err), zap.String("app_no", req.AppNo))
 		return nil, err
 	}
-	lock, err := global.GVA_REDIS.SetNX(ctx, s.getPaymentLockKey(req.Order.OrderNo, req.AppNo), time.Now().Unix(), enum.PaymentLockExpire).Result()
+	lock, err := s.redis.SetNX(ctx, s.getPaymentLockKey(req.Order.OrderNo, req.AppNo), time.Now().Unix(), enum.PaymentLockExpire).Result()
 	defer func() {
-		global.GVA_REDIS.Del(ctx, s.getPaymentLockKey(req.Order.OrderNo, req.AppNo))
+		s.redis.Del(ctx, s.getPaymentLockKey(req.Order.OrderNo, req.AppNo))
 	}()
 	if !lock && err == nil {
 		return nil, errors.NewError(errors.ErrPayPending, "重复支付，请稍后再试")
 	}
 	req.MchNo = appInfo.MchNo
 	// 4. 幂等校验：检查订单是否已存在
-	payOrder, err := s.svc.PaymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
+	payOrder, err := s.paymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
 		OrderNo: req.Order.OrderNo,
 		AppNo:   req.AppNo,
 		MchNo:   req.MchNo,
@@ -123,14 +142,14 @@ func (s *cashierService) Create(ctx context.Context, req *public.CashierCreateOr
 			l.Error("CashierCreateFail", zap.Error(err), zap.Any("order", req.Order))
 			return nil, errors.WrapError(errors.ErrCodeSysError, "创建订单失败", err)
 		}
-		err = s.svc.PaymentOrderRepo.Save(ctx, payOrder)
+		err = s.paymentOrderRepo.Save(ctx, payOrder)
 		if err != nil {
 			l.Error("CashierCreateFail", zap.Error(err), zap.Any("order", req.Order))
 			return nil, errors.WrapError(errors.ErrCodeSysError, "创建订单失败", err)
 		}
 		eventInfo := payOrder.GetEvents()
 		if eventInfo != nil {
-			eventErr := s.svc.Event.Publish(ctx, eventInfo, config2.Config.Topic.PaymentStatus)
+			eventErr := s.eventPublisher.Publish(ctx, eventInfo, global.Cfg.Payment.Topic.PaymentStatus)
 			if eventErr != nil {
 				l.Error("发布订单状态失败", zap.Error(eventErr), zap.Any("event", eventInfo))
 			}
@@ -241,18 +260,18 @@ func (s *cashierService) Payment(ctx context.Context, req *public.CashierPayment
 		l.Error("cashierPayment", zap.Error(err), zap.Any("token", req))
 		return nil, errors.NewError(errors.ErrCodeInvalidParam, "token无效")
 	}
-	appInfo, err := s.svc.AppRepo.GetByAppNoFormCache(ctx, aggregateToken.AppNo)
+	appInfo, err := s.appRepo.GetByAppNoFormCache(ctx, aggregateToken.AppNo)
 	if err != nil {
 		l.Error("cashierPayment", zap.Error(err), zap.String("aggregateToken.AppNo", aggregateToken.AppNo))
 		return nil, errors.NewError(errors.ErrCodeInvalidParam, "token无效")
 	}
-	account, err := s.svc.PaymentAccountRepo.GetByAccountNoFormCache(ctx, req.AccountNo)
+	account, err := s.paymentAccountRepo.GetByAccountNoFormCache(ctx, req.AccountNo)
 	if err != nil {
 		l.Error("cashierPayment", zap.Error(err), zap.String("req.AccountNo", req.AccountNo))
 		return nil, errors.NewError(errors.ErrCodeInvalidParam, "无效支付账号")
 	}
 	// 已有支付成功订单
-	payOrder, err := s.svc.PaymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
+	payOrder, err := s.paymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
 		OrderNo: req.OrderNo,
 		TradeNo: "",
 		AppNo:   appInfo.AppNo,
@@ -278,7 +297,7 @@ func (s *cashierService) Payment(ctx context.Context, req *public.CashierPayment
 	if err != nil {
 		return nil, err
 	}
-	result, _, err := s.domain.PaymentService.Payment(ctx, payOrder, s.buildPayment(appInfo, payOrder, req), appInfo, account, callbackUrl)
+	result, _, err := s.domainPayment.Payment(ctx, payOrder, s.buildPayment(appInfo, payOrder, req), appInfo, account, callbackUrl)
 	if err != nil {
 		l.Error("cashierPayment", zap.Error(err), zap.Any("req.AccountNo", req))
 		return nil, err

@@ -3,8 +3,8 @@ package utils
 import (
 	"context"
 
-	"github.com/lihongsheng/go-admin/server/log"
-	"github.com/lihongsheng/go-admin/server/middleware"
+	"github.com/lihongsheng/pay-gateway/log"
+	"github.com/lihongsheng/pay-gateway/middleware"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"

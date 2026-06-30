@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lihongsheng/go-admin/server/config"
-	"github.com/lihongsheng/go-admin/server/global"
-	"github.com/lihongsheng/go-admin/server/initialize"
-	applog "github.com/lihongsheng/go-admin/server/log"
+	"github.com/lihongsheng/pay-gateway/config"
+	"github.com/lihongsheng/pay-gateway/global"
+	"github.com/lihongsheng/pay-gateway/initialize"
+	applog "github.com/lihongsheng/pay-gateway/log"
 )
 
 func main() {

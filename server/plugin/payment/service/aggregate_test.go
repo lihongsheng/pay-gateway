@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/config"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
+	"github.com/lihongsheng/pay-gateway/config"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain"
 	enum2 "github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
@@ -32,10 +32,10 @@ func testInit() {
 		},
 	})
 
-	global.GVA_PAY_DB = db
-	global.GVA_LOG = zap.NewExample()
-	config.Config.Salt = "1234561234561234"
-	global.GVA_REDIS = redis.NewClient(&redis.Options{
+	global.DB = db
+	zap.L() = zap.NewExample()
+	global.Cfg.Payment.Salt = "1234561234561234"
+	global.Redis = redis.NewClient(&redis.Options{
 		Addr:            "47.110.88.165:6813",
 		Username:        "",
 		Password:        "f392Vt3e7O", // no password set
@@ -48,10 +48,10 @@ func testInit() {
 		MaxRetryBackoff: 128 * time.Millisecond,
 		DialTimeout:     3 * time.Second,
 	})
-	config.Config.Salt = "17K9mP2n08rT4vY9"
-	config.Config.WebHost = "https://test.web.payment.jianxindianzi.com"
-	config.Config.ApiHost = "https://test.api.payment.jianxindianzi.com"
-	config.Config.ProxyNotifyPrefix = "/sslab"
+	global.Cfg.Payment.Salt = "17K9mP2n08rT4vY9"
+	global.Cfg.Payment.WebHost = "https://test.web.payment.jianxindianzi.com"
+	global.Cfg.Payment.ApiHost = "https://test.api.payment.jianxindianzi.com"
+	global.Cfg.Payment.ProxyNotifyPrefix = "/sslab"
 }
 
 func TestAggregateService_GetRedirectUrl(t *testing.T) {

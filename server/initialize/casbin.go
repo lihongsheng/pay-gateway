@@ -1,9 +1,9 @@
 package initialize
 
 import (
-	"github.com/lihongsheng/go-admin/server/global"
-	"github.com/lihongsheng/go-admin/server/log"
-	"github.com/lihongsheng/go-admin/server/utils/casbin"
+	"github.com/lihongsheng/pay-gateway/global"
+	"github.com/lihongsheng/pay-gateway/log"
+	"github.com/lihongsheng/pay-gateway/utils/casbin"
 )
 
 // SetupCasbin 在 global.DB 就绪后初始化 enforcer + 自动建 casbin_rule 表

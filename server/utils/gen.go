@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lihongsheng/go-admin/server/utils/genid"
+	"github.com/lihongsheng/pay-gateway/utils/genid"
 )
 
 // GenDeviceID 向后兼容别名

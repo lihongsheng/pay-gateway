@@ -1,10 +1,10 @@
 package system
 
 import (
-	dtoSys "github.com/lihongsheng/go-admin/server/dto/system"
-	"github.com/lihongsheng/go-admin/server/enum"
-	"github.com/lihongsheng/go-admin/server/model/system"
-	repoSys "github.com/lihongsheng/go-admin/server/repo/system"
+	dtoSys "github.com/lihongsheng/pay-gateway/dto/system"
+	"github.com/lihongsheng/pay-gateway/enum"
+	"github.com/lihongsheng/pay-gateway/model/system"
+	repoSys "github.com/lihongsheng/pay-gateway/repo/system"
 )
 
 // MenuService 菜单业务接口

@@ -1,8 +1,8 @@
 package installer
 
 import (
-	"github.com/lihongsheng/go-admin/server/enum"
-	"github.com/lihongsheng/go-admin/server/model/system"
+	"github.com/lihongsheng/pay-gateway/enum"
+	"github.com/lihongsheng/pay-gateway/model/system"
 )
 
 // defaultMenus 默认菜单树（catalog -> menu -> button 三层）

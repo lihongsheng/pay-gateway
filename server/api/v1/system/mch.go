@@ -3,10 +3,10 @@ package system
 import (
 	"strconv"
 
-	dtoSys "github.com/lihongsheng/go-admin/server/dto/system"
-	"github.com/lihongsheng/go-admin/server/enum"
-	serviceSys "github.com/lihongsheng/go-admin/server/service/system"
-	"github.com/lihongsheng/go-admin/server/utils/response"
+	dtoSys "github.com/lihongsheng/pay-gateway/dto/system"
+	"github.com/lihongsheng/pay-gateway/enum"
+	serviceSys "github.com/lihongsheng/pay-gateway/service/system"
+	"github.com/lihongsheng/pay-gateway/utils/response"
 
 	"github.com/gin-gonic/gin"
 )

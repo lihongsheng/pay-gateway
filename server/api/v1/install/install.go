@@ -10,11 +10,11 @@ import (
 	"io"
 	"time"
 
-	"github.com/lihongsheng/go-admin/server/core/installer"
-	dtoInstall "github.com/lihongsheng/go-admin/server/dto/install"
-	"github.com/lihongsheng/go-admin/server/global"
-	serviceInstall "github.com/lihongsheng/go-admin/server/service/install"
-	"github.com/lihongsheng/go-admin/server/utils/response"
+	"github.com/lihongsheng/pay-gateway/core/installer"
+	dtoInstall "github.com/lihongsheng/pay-gateway/dto/install"
+	"github.com/lihongsheng/pay-gateway/global"
+	serviceInstall "github.com/lihongsheng/pay-gateway/service/install"
+	"github.com/lihongsheng/pay-gateway/utils/response"
 
 	"github.com/gin-gonic/gin"
 )

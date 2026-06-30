@@ -5,22 +5,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/admin"
+	"time"
+
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/service/dto"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/utils"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
-	"time"
 )
 
 type ApplicationRepo interface {
 	Get(ctx context.Context, appId int64) (*model.Application, error)
-	Save(ctx context.Context, app *admin.ApplicationCreateRequest) (*model.Application, error)
+	Save(ctx context.Context, app *dto.ApplicationCreateRequest) (*model.Application, error)
 	GetByAppNoFormCache(ctx context.Context, appNo string) (*model.Application, error)
-	Search(ctx context.Context, req *admin.ApplicationQueryRequest) ([]*model.Application, error)
-	Count(ctx context.Context, req *admin.ApplicationQueryRequest) (int64, error)
+	Search(ctx context.Context, req *dto.ApplicationQueryRequest) ([]*model.Application, error)
+	Count(ctx context.Context, req *dto.ApplicationQueryRequest) (int64, error)
 	ChangeStatus(ctx context.Context, appId int64, status enum.MchStatus) error
 	GetAppByNoAndMchNoCache(ctx context.Context, appNo string, mchNo string) (*dto.ApplicationCacheInfo, error)
 	DelAppCache(ctx context.Context, appNo string, mchNo string) error
@@ -31,15 +31,17 @@ type ApplicationRepo interface {
 }
 
 type applicationRepoImpl struct {
+	db  *gorm.DB
+	rdb *redis.Client
 }
 
-func NewApplicationRepo() ApplicationRepo {
-	return &applicationRepoImpl{}
+func NewApplicationRepo(db *gorm.DB, rdb *redis.Client) ApplicationRepo {
+	return &applicationRepoImpl{db: db, rdb: rdb}
 }
 
 func (a *applicationRepoImpl) GetByAppNo(ctx context.Context, appNo string) (*model.Application, error) {
 	var app model.Application
-	err := global.GVA_PAY_DB.WithContext(ctx).Where("app_no = ?", appNo).First(&app).Error
+	err := a.db.WithContext(ctx).Where("app_no = ?", appNo).First(&app).Error
 	if err != nil {
 		return nil, err
 	}
@@ -76,14 +78,14 @@ func (a *applicationRepoImpl) UpdateApplicationAccountVersion(ctx context.Contex
 
 func (a *applicationRepoImpl) Get(ctx context.Context, appId int64) (*model.Application, error) {
 	var app model.Application
-	err := global.GVA_PAY_DB.WithContext(ctx).Where("id = ?", appId).First(&app).Error
+	err := a.db.WithContext(ctx).Where("id = ?", appId).First(&app).Error
 	if err != nil {
 		return nil, err
 	}
 	return &app, nil
 }
 
-func (a *applicationRepoImpl) Save(ctx context.Context, app *admin.ApplicationCreateRequest) (*model.Application, error) {
+func (a *applicationRepoImpl) Save(ctx context.Context, app *dto.ApplicationCreateRequest) (*model.Application, error) {
 	if app.Validate() != nil {
 		return nil, app.Validate()
 	}
@@ -129,7 +131,7 @@ func (a *applicationRepoImpl) Save(ctx context.Context, app *admin.ApplicationCr
 			ProxyPwd:         app.ProxyPwd,
 		}
 	}
-	err = global.GVA_PAY_DB.WithContext(ctx).Save(modelApp).Error
+	err = a.db.WithContext(ctx).Save(modelApp).Error
 	if err != nil {
 		return nil, err
 	}
@@ -143,8 +145,8 @@ func (a *applicationRepoImpl) Save(ctx context.Context, app *admin.ApplicationCr
 func (a *applicationRepoImpl) GetByAppNoFormCache(ctx context.Context, appNo string) (*model.Application, error) {
 	key := a.getAppNoCacheKeys(appNo)
 	var app model.Application
-	if global.GVA_REDIS.Exists(ctx, key).Val() > 0 {
-		cacheData, _ := global.GVA_REDIS.Get(ctx, key).Result()
+	if a.rdb.Exists(ctx, key).Val() > 0 {
+		cacheData, _ := a.rdb.Get(ctx, key).Result()
 		if cacheData != "" {
 			err := json.Unmarshal([]byte(cacheData), &app)
 			if err != nil {
@@ -155,15 +157,15 @@ func (a *applicationRepoImpl) GetByAppNoFormCache(ctx context.Context, appNo str
 			}
 		}
 	}
-	err := global.GVA_PAY_DB.WithContext(ctx).Where("app_no = ?", appNo).First(&app).Error
+	err := a.db.WithContext(ctx).Where("app_no = ?", appNo).First(&app).Error
 	if err != nil {
 		return nil, err
 	}
-	global.GVA_REDIS.Set(ctx, key, app, enum.ApplicationInfoCacheExpire)
+	a.rdb.Set(ctx, key, app, enum.ApplicationInfoCacheExpire)
 	return &app, nil
 }
 
-func (a *applicationRepoImpl) Search(ctx context.Context, req *admin.ApplicationQueryRequest) ([]*model.Application, error) {
+func (a *applicationRepoImpl) Search(ctx context.Context, req *dto.ApplicationQueryRequest) ([]*model.Application, error) {
 	var apps []*model.Application
 	query := a.buildQuery(ctx, req)
 
@@ -179,7 +181,7 @@ func (a *applicationRepoImpl) Search(ctx context.Context, req *admin.Application
 	return apps, err
 }
 
-func (a *applicationRepoImpl) Count(ctx context.Context, req *admin.ApplicationQueryRequest) (int64, error) {
+func (a *applicationRepoImpl) Count(ctx context.Context, req *dto.ApplicationQueryRequest) (int64, error) {
 	var count int64
 	query := a.buildQuery(ctx, req)
 	err := query.Count(&count).Error
@@ -187,7 +189,7 @@ func (a *applicationRepoImpl) Count(ctx context.Context, req *admin.ApplicationQ
 }
 
 func (a *applicationRepoImpl) ChangeStatus(ctx context.Context, appId int64, status enum.MchStatus) error {
-	result := global.GVA_PAY_DB.WithContext(ctx).Model(&model.Application{}).
+	result := a.db.WithContext(ctx).Model(&model.Application{}).
 		Where("id = ?", appId).
 		Update("status", status)
 
@@ -199,7 +201,7 @@ func (a *applicationRepoImpl) GetAppByNoAndMchNoCache(ctx context.Context, appNo
 	var app *model.Application
 	var result *dto.ApplicationCacheInfo
 	// 尝试从缓存获取
-	cacheData, err := global.GVA_REDIS.Get(ctx, cacheKey).Result()
+	cacheData, err := a.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cacheData != "" {
 		err = json.Unmarshal([]byte(cacheData), result)
 		if err == nil {
@@ -212,7 +214,7 @@ func (a *applicationRepoImpl) GetAppByNoAndMchNoCache(ctx context.Context, appNo
 		return nil, err
 	}
 	var mch *model.Merchant
-	err = global.GVA_PAY_DB.WithContext(ctx).Model(&model.Merchant{}).Where("mch_no = ?", app.MchNo).First(&mch).Error
+	err = a.db.WithContext(ctx).Model(&model.Merchant{}).Where("mch_no = ?", app.MchNo).First(&mch).Error
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +243,7 @@ func (a *applicationRepoImpl) GetAppByNoAndMchNoCache(ctx context.Context, appNo
 	}
 	// 存入缓存
 	jsonData, _ := json.Marshal(result)
-	global.GVA_REDIS.Set(ctx, cacheKey, string(jsonData), enum.ApplicationInfoCacheExpire)
+	a.rdb.Set(ctx, cacheKey, string(jsonData), enum.ApplicationInfoCacheExpire)
 
 	return result, nil
 }
@@ -249,7 +251,7 @@ func (a *applicationRepoImpl) GetAppByNoAndMchNoCache(ctx context.Context, appNo
 // 辅助方法：根据应用号和商户号查询
 func (a *applicationRepoImpl) GetByAppNoAndMchNo(ctx context.Context, appNo string, mchNo string) (*model.Application, error) {
 	var app model.Application
-	err := global.GVA_PAY_DB.WithContext(ctx).Where("app_no = ? AND mch_no = ?", appNo, mchNo).First(&app).Error
+	err := a.db.WithContext(ctx).Where("app_no = ? AND mch_no = ?", appNo, mchNo).First(&app).Error
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +266,7 @@ func (a *applicationRepoImpl) DelAllAppCacheKeys(ctx context.Context, mchNo stri
 	if len(cacheKeys) == 0 {
 		return nil
 	}
-	err = global.GVA_REDIS.Del(ctx, cacheKeys...).Err()
+	err = a.rdb.Del(ctx, cacheKeys...).Err()
 	if err != nil {
 		return errors.New(fmt.Sprintf("删除应用缓存失败: %s", err.Error()))
 	}
@@ -277,7 +279,7 @@ func (a *applicationRepoImpl) DelAppCache(ctx context.Context, appNo string, mch
 	if len(cacheKeys) == 0 {
 		return nil
 	}
-	err := global.GVA_REDIS.Del(ctx, cacheKeys...).Err()
+	err := a.rdb.Del(ctx, cacheKeys...).Err()
 	if err != nil {
 		return errors.New(fmt.Sprintf("删除应用缓存失败: %s", err.Error()))
 	}
@@ -297,7 +299,7 @@ func (a *applicationRepoImpl) getAppNoCacheKeys(appNo string) string {
 
 func (a *applicationRepoImpl) GetAllAppCacheKeys(ctx context.Context, mchNo string) ([]string, error) {
 	var apps []*model.Application
-	err := global.GVA_PAY_DB.WithContext(ctx).Where("mch_no = ?", mchNo).Find(&apps).Error
+	err := a.db.WithContext(ctx).Where("mch_no = ?", mchNo).Find(&apps).Error
 	if err != nil {
 		return nil, err
 	}
@@ -309,8 +311,8 @@ func (a *applicationRepoImpl) GetAllAppCacheKeys(ctx context.Context, mchNo stri
 }
 
 // 构建查询条件
-func (a *applicationRepoImpl) buildQuery(ctx context.Context, req *admin.ApplicationQueryRequest) *gorm.DB {
-	query := global.GVA_PAY_DB.WithContext(ctx).Model(&model.Application{})
+func (a *applicationRepoImpl) buildQuery(ctx context.Context, req *dto.ApplicationQueryRequest) *gorm.DB {
+	query := a.db.WithContext(ctx).Model(&model.Application{})
 
 	if req.AppNo != "" {
 		query = query.Where("app_no = ?", "%"+req.AppNo+"%")

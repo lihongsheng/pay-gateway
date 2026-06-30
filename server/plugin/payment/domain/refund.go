@@ -1,19 +1,45 @@
 package domain
 
 import (
-	"context"
+  "context"
+  errors2 "errors"
+  "fmt"
+  "github.com/lihongsheng/pay-gateway/global"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/domain/event"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/enum"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/errors"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/infrastructure"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/log"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/repo"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/svc"
+  paySdk "github.com/lihongsheng/payment-sdk"
+  "github.com/lihongsheng/payment-sdk/config"
+  "github.com/lihongsheng/payment-sdk/config/proxy"
+  "github.com/lihongsheng/payment-sdk/driver/dto"
+  "github.com/lihongsheng/payment-sdk/driver/iface"
+  "github.com/lihongsheng/payment-sdk/enum/channel"
+  "github.com/lihongsheng/payment-sdk/enum/payment"
+  "github.com/lihongsheng/payment-sdk/enum/refund"
+  "github.com/redis/go-redis/v9"
+  "go.uber.org/zap"
+  "gorm.io/gorm"
+  "net/http"
+  "time"
+)
+"context"
 	errors2 "errors"
 	"fmt"
 	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
-	config2 "github.com/lihongsheng/pay-gateway/plugin/payment/config"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/event"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/utils"
 	paySdk "github.com/lihongsheng/payment-sdk"
 	"github.com/lihongsheng/payment-sdk/config"
@@ -28,23 +54,19 @@ import (
 	"net/http"
 	"time"
 )
-
 type RefundService interface {
 	Refund(ctx context.Context, req *public.RefundRequest, appInfo *model.Application) (*model.RefundOrder, error)
 	Query(ctx context.Context, req *public.RefundQueryRequest, appInfo *model.Application) (*model.RefundOrder, error)
 	Callback(ctx context.Context, req *http.Request, refundTradeNo string, appInfo *model.Application, payOrder *entity.PaymentOrder, account *entity.PaymentAccount) (*dto.CallbackRefundDetail, *model.RefundOrder, error)
 }
-
 type refundService struct {
 	svc *svc.ServiceContext
 }
-
 func NewRefundService(svc *svc.ServiceContext) RefundService {
 	return &refundService{
 		svc: svc,
 	}
 }
-
 func (s *refundService) Callback(ctx context.Context, req *http.Request, refundTradeNo string, appInfo *model.Application, payOrder *entity.PaymentOrder, account *entity.PaymentAccount) (*dto.CallbackRefundDetail, *model.RefundOrder, error) {
 	m, err := s.svc.RefundRepo.GetFromCache(ctx, public.RefundQueryRequest{
 		RefundTradeNo: refundTradeNo,
@@ -73,7 +95,7 @@ func (s *refundService) Callback(ctx context.Context, req *http.Request, refundT
 		}
 	}
 	if account == nil {
-		account, err = s.svc.PaymentAccountRepo.GetByAccountNoFormCache(ctx, payOrder.PaymentAccountNo)
+		account, err = s.paymentAccountRepo.GetByAccountNoFormCache(ctx, payOrder.PaymentAccountNo)
 		if err != nil {
 			return nil, nil, errors.WrapError(errors.ErrCodeSysError, "系统异常，请稍后再试", err)
 		}
@@ -100,18 +122,18 @@ func (s *refundService) Callback(ctx context.Context, req *http.Request, refundT
 		}
 		m.StatusFrom = "callback"
 		m.RefundAmount = resp.Amount.Total
-		if err := s.svc.RefundRepo.Save(ctx, m); err != nil {
+		if err := s.refundRepo.Save(ctx, m); err != nil {
 			return nil, nil, errors.WrapError(errors.ErrCodeSysError, "系统异常，请稍后再试", err)
 		}
 		if eventInfo != nil {
 			l.Info("发布退款状态", zap.Error(err), zap.Any("event", eventInfo))
-			if err := s.svc.Event.Publish(ctx, eventInfo, config2.Config.Topic.RefundStatus); err != nil {
+			if err := s.event.Publish(ctx, eventInfo, global.Cfg.Payment.Topic.RefundStatus); err != nil {
 				l.Error("发布退款状态失败", zap.Error(err), zap.Any("event", eventInfo))
 			}
 		}
 	}
 	if m.Status == int64(refund.Status(resp.Status)) && payOrder.Status == payment.Status_Success {
-		updatePaymentErr := s.svc.PaymentOrderRepo.UpdateStatus(ctx, payOrder, payOrder.Status, map[string]interface{}{
+		updatePaymentErr := s.paymentOrderRepo.UpdateStatus(ctx, payOrder, payOrder.Status, map[string]interface{}{
 			"status":      payment.Status_Refund,
 			"status_from": "refundCallback",
 		})
@@ -121,20 +143,19 @@ func (s *refundService) Callback(ctx context.Context, req *http.Request, refundT
 	}
 	return resp, m, nil
 }
-
 func (s *refundService) Refund(ctx context.Context, req *public.RefundRequest, appInfo *model.Application) (m *model.RefundOrder, err error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
 	l := log.WithCtx(ctx)
-	lock, err := global.GVA_REDIS.SetNX(ctx, s.getRefundLockKey(req.OrderNo, req.AppNo), time.Now().Unix(), enum.PaymentLockExpire).Result()
+	lock, err := global.Redis.SetNX(ctx, s.getRefundLockKey(req.OrderNo, req.AppNo), time.Now().Unix(), enum.PaymentLockExpire).Result()
 	defer func() {
-		global.GVA_REDIS.Del(ctx, s.getRefundLockKey(req.OrderNo, req.AppNo))
+		global.Redis.Del(ctx, s.getRefundLockKey(req.OrderNo, req.AppNo))
 	}()
 	if !lock && err == nil {
 		return nil, errors.NewError(errors.ErrRefundPending, "有退款处理中, 请稍后再试")
 	}
-	payOrder, err := s.svc.PaymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
+	payOrder, err := s.paymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
 		OrderNo: req.OrderNo,
 		TradeNo: "",
 		AppNo:   req.AppNo,
@@ -152,11 +173,11 @@ func (s *refundService) Refund(ctx context.Context, req *public.RefundRequest, a
 	if req.Amount.Total > payOrder.PaymentAmount {
 		return nil, errors.NewError(errors.ErrRefundAmountErr, "退款金额大于支付金额")
 	}
-	account, err := s.svc.PaymentAccountRepo.GetByAccountNoFormCache(ctx, payOrder.PaymentAccountNo)
+	account, err := s.paymentAccountRepo.GetByAccountNoFormCache(ctx, payOrder.PaymentAccountNo)
 	if err != nil {
 		return nil, errors.WrapError(errors.ErrCodeSysError, "系统异常，请稍后再试", err)
 	}
-	m, err = s.svc.RefundRepo.GetFromCache(ctx, public.RefundQueryRequest{
+	m, err = s.refundRepo.GetFromCache(ctx, public.RefundQueryRequest{
 		RefundTradeNo: "",
 		RefundNo:      req.RefundNo,
 		AppNo:         req.AppNo,
@@ -179,7 +200,7 @@ func (s *refundService) Refund(ctx context.Context, req *public.RefundRequest, a
 	if m.Status == int64(refund.Status_Success) {
 		return m, nil
 	}
-	refundAmount, err := s.svc.RefundRepo.CountAmount(ctx, req.MchNo, req.AppNo, req.OrderNo, []refund.Status{refund.Status_Success})
+	refundAmount, err := s.refundRepo.CountAmount(ctx, req.MchNo, req.AppNo, req.OrderNo, []refund.Status{refund.Status_Success})
 	if err != nil {
 		return nil, errors.WrapError(errors.ErrCodeSysError, "系统异常，请稍后再试", err)
 	}
@@ -189,7 +210,7 @@ func (s *refundService) Refund(ctx context.Context, req *public.RefundRequest, a
 	// 6. 异步保存订单（优化：独立ctx防止主ctx超时
 	defer func() {
 		c, cancel := context.WithTimeout(context.Background(), enum.SaveOrderTimeout)
-		if err := s.svc.RefundRepo.Save(c, m); err != nil {
+		if err := s.refundRepo.Save(c, m); err != nil {
 			l.Error("创建退款订单失败", zap.Error(err), zap.Any("refundOrder", m))
 		}
 		cancel()
@@ -211,14 +232,13 @@ func (s *refundService) Refund(ctx context.Context, req *public.RefundRequest, a
 	if oldStatus != m.Status {
 		eventInfo := event.GetRefundOrderStatusEvent(m, refund.Status(m.Status))
 		if eventInfo != nil {
-			if err := s.svc.Event.Publish(ctx, eventInfo, config2.Config.Topic.RefundStatus); err != nil {
+			if err := s.event.Publish(ctx, eventInfo, global.Cfg.Payment.Topic.RefundStatus); err != nil {
 				log.WithCtx(ctx).Error("发布订单状态失败", zap.Error(err), zap.Any("event", eventInfo))
 			}
 		}
 	}
 	return m, nil
 }
-
 func (s *refundService) invokeChannelPayment(ctx context.Context, refund *model.RefundOrder, payOrder *entity.PaymentOrder, appInfo *model.Application, account *entity.PaymentAccount) (*dto.RefundDetail, error) {
 	payDri, err := s.buildPayDri(payOrder.PaymentMethod, payOrder.PaymentProduct, appInfo, account)
 	if err != nil {
@@ -230,7 +250,6 @@ func (s *refundService) invokeChannelPayment(ctx context.Context, refund *model.
 	}
 	return payDri.Refund(ctx, payReq)
 }
-
 func (s *refundService) buildChannelPayOrder(refund *model.RefundOrder, payOrder *entity.PaymentOrder, appInfo *model.Application, account *entity.PaymentAccount) (*dto.RefundRequest, error) {
 	path := fmt.Sprintf(enum.RefundNotify, account.Channel, refund.MchNo, refund.AppNo, refund.RefundTradeNo)
 	parse, err := getNotifyUrl(appInfo)
@@ -254,10 +273,8 @@ func (s *refundService) buildChannelPayOrder(refund *model.RefundOrder, payOrder
 		},
 	}
 	request.NotifyUrl = parse.String()
-
 	return request, nil
 }
-
 func (s *refundService) buildPayDri(paymentMethod payment.Payment, paymentProduct payment.PaymentProduct, appInfo *model.Application, account *entity.PaymentAccount) (iface.Refund, error) {
 	opts := []config.Option{
 		config.WithPayment(paymentMethod),
@@ -278,7 +295,6 @@ func (s *refundService) buildPayDri(paymentMethod payment.Payment, paymentProduc
 	}
 	return payDri, nil
 }
-
 func (s *refundService) buildRefundModel(req *public.RefundRequest, payOrder *entity.PaymentOrder) *model.RefundOrder {
 	no, t := utils.GenTradeNo(req.MchNo)
 	r := &model.RefundOrder{
@@ -307,7 +323,7 @@ func (s *refundService) buildRefundModel(req *public.RefundRequest, payOrder *en
 	return r
 }
 func (s *refundService) Query(ctx context.Context, req *public.RefundQueryRequest, appInfo *model.Application) (*model.RefundOrder, error) {
-	m, err := s.svc.RefundRepo.GetFromCache(ctx, public.RefundQueryRequest{
+	m, err := s.refundRepo.GetFromCache(ctx, public.RefundQueryRequest{
 		RefundTradeNo: req.RefundTradeNo,
 		RefundNo:      req.RefundNo,
 		AppNo:         appInfo.AppNo,
@@ -322,7 +338,7 @@ func (s *refundService) Query(ctx context.Context, req *public.RefundQueryReques
 	if !(m.Status == int64(refund.Status_Created) || m.Status == int64(refund.Status_Pending)) {
 		return m, nil
 	}
-	payOrder, err := s.svc.PaymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
+	payOrder, err := s.paymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
 		OrderNo: m.OrderNo,
 		TradeNo: m.TradeNo,
 		AppNo:   m.AppNo,
@@ -334,7 +350,7 @@ func (s *refundService) Query(ctx context.Context, req *public.RefundQueryReques
 		}
 		return nil, errors.NewError(errors.ErrPayOrderNotExist, "订单不存在")
 	}
-	account, err := s.svc.PaymentAccountRepo.GetByAccountNoFormCache(ctx, payOrder.PaymentAccountNo)
+	account, err := s.paymentAccountRepo.GetByAccountNoFormCache(ctx, payOrder.PaymentAccountNo)
 	if err != nil {
 		return nil, errors.WrapError(errors.ErrCodeSysError, "系统异常，请稍后再试", err)
 	}
@@ -354,19 +370,18 @@ func (s *refundService) Query(ctx context.Context, req *public.RefundQueryReques
 		eventInfo := event.GetRefundOrderStatusEvent(m, resp.Status)
 		m.Status = int64(resp.Status)
 		m.OutMchTradeNo = resp.TradeRefundNo
-		err := s.svc.RefundRepo.Save(ctx, m)
+		err := s.refundRepo.Save(ctx, m)
 		if err != nil {
 			return nil, errors.WrapError(errors.ErrCodeSysError, "更新订单状态失败", err)
 		}
 		if eventInfo != nil {
-			if err := s.svc.Event.Publish(ctx, eventInfo, config2.Config.Topic.RefundStatus); err != nil {
+			if err := s.event.Publish(ctx, eventInfo, global.Cfg.Payment.Topic.RefundStatus); err != nil {
 				log.WithCtx(ctx).Error("发布订单状态失败", zap.Error(err), zap.Any("event", eventInfo))
 			}
 		}
 	}
 	return m, nil
 }
-
 func (s *refundService) getRefundLockKey(orderNo, appNo string) string {
 	return fmt.Sprintf(enum.CacheLockRefund, orderNo, appNo)
 }

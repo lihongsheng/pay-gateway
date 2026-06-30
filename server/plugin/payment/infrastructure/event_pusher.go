@@ -3,19 +3,25 @@ package infrastructure
 import (
 	"context"
 	"encoding/json"
+
 	"github.com/IBM/sarama"
-	"github.com/lihongsheng/pay-gateway/global"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/event"
 )
 
 type Event interface {
 	Publish(ctx context.Context, event event.Event, topic string) error
 }
+
 type eventImpl struct {
+	producer sarama.SyncProducer
 }
 
-func NewEvent() Event {
-	return &eventImpl{}
+func NewEvent(producer sarama.SyncProducer) Event {
+	return &eventImpl{producer: producer}
+}
+
+func NewNoopEvent() Event {
+	return &noopEvent{}
 }
 
 func (e *eventImpl) Publish(ctx context.Context, event event.Event, topic string) error {
@@ -23,12 +29,18 @@ func (e *eventImpl) Publish(ctx context.Context, event event.Event, topic string
 	if err != nil {
 		return err
 	}
-	// 写入kafka
 	msg := &sarama.ProducerMessage{
-		Topic: topic,                                     // 主题消息
-		Value: sarama.StringEncoder(data),                // 消息内容（支持多种Encoder）
-		Key:   sarama.StringEncoder(event.GetEventKey()), // 可选：添加消息键（用于分区路由和去重）
+		Topic: topic,
+		Value: sarama.StringEncoder(data),
+		Key:   sarama.StringEncoder(event.GetEventKey()),
 	}
-	_, _, err = global.GVA_KAFKA_PRODUCER.SendMessage(msg)
+	_, _, err = e.producer.SendMessage(msg)
 	return err
+}
+
+// noopEvent is a no-op implementation when Kafka is not configured
+type noopEvent struct{}
+
+func (n *noopEvent) Publish(_ context.Context, _ event.Event, _ string) error {
+	return nil
 }

@@ -5,8 +5,8 @@ import (
 	"context"
 	"errors"
 	jwtv5 "github.com/golang-jwt/jwt/v5"
-	"github.com/lihongsheng/go-admin/server/enum"
-	"github.com/lihongsheng/go-admin/server/utils/jwt/config"
+	"github.com/lihongsheng/pay-gateway/enum"
+	"github.com/lihongsheng/pay-gateway/utils/jwt/config"
 	"time"
 )
 

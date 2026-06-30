@@ -11,7 +11,7 @@ import (
 
 func TestRouterRepoImpl_Save(t *testing.T) {
 	testInit()
-	repo := NewRouterRepo(global.GVA_REDIS)
+	repo := NewRouterRepo(global.DB, global.Redis)
 	// 关键：指定时区解析时间（比如东八区）
 	loc, _ := time.LoadLocation("Asia/Shanghai") // 东八区
 	// 方式1：带时区解析

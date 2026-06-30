@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lihongsheng/go-admin/server/enum"
-	"github.com/lihongsheng/go-admin/server/model/system"
-	"github.com/lihongsheng/go-admin/server/utils/casbin"
-	"github.com/lihongsheng/go-admin/server/utils/genid"
+	"github.com/lihongsheng/pay-gateway/enum"
+	"github.com/lihongsheng/pay-gateway/model/system"
+	"github.com/lihongsheng/pay-gateway/utils/casbin"
+	"github.com/lihongsheng/pay-gateway/utils/genid"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -130,7 +130,7 @@ func seedCore(db *gorm.DB, admin AdminSeed) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		// 1) 平台超级管理员角色
 		superRole = system.SysRole{
-			Name: "超级管理员",
+			Name:   "超级管理员",
 			Remark: "拥有全部权限", Status: 1,
 			DefaultRouter: "/dashboard",
 		}
@@ -148,14 +148,14 @@ func seedCore(db *gorm.DB, admin AdminSeed) error {
 			nickname = admin.Username
 		}
 		user := system.SysUser{
-			Username: admin.Username,
-			Password: string(hash),
-			Nickname: nickname,
-			Email:    admin.Email,
-			Status:   1,
-			MchID:    0,
+			Username:   admin.Username,
+			Password:   string(hash),
+			Nickname:   nickname,
+			Email:      admin.Email,
+			Status:     1,
+			MchID:      0,
 			SystemType: enum.SystemTypePlatform,
-			Roles:    []system.SysRole{superRole},
+			Roles:      []system.SysRole{superRole},
 		}
 		if err := tx.Create(&user).Error; err != nil {
 			return err
@@ -218,11 +218,11 @@ func seedCore(db *gorm.DB, admin AdminSeed) error {
 		if err := createMenusTree(tx, merchantAdminMenus(), 0); err != nil {
 			return err
 		}
-			// 9) 商户管理员角色拥有对应 systemType 的菜单
-			var mchMenus []system.SysMenu
-			if err := tx.Where("system_type = ?", enum.SystemTypeMch).Find(&mchMenus).Error; err != nil {
-				return err
-			}
+		// 9) 商户管理员角色拥有对应 systemType 的菜单
+		var mchMenus []system.SysMenu
+		if err := tx.Where("system_type = ?", enum.SystemTypeMch).Find(&mchMenus).Error; err != nil {
+			return err
+		}
 
 		if err := tx.Model(&mchAdminRole).Association("Menus").Replace(mchMenus); err != nil {
 			return err

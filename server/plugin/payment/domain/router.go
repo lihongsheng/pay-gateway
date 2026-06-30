@@ -1,15 +1,30 @@
 package domain
 
 import (
-	"context"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
+  "context"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/dto"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/enum"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/errors"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/log"
+  t "github.com/lihongsheng/pay-gateway/plugin/payment/repo"
+  "github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
+  paySdk "github.com/lihongsheng/payment-sdk"
+  enum2 "github.com/lihongsheng/payment-sdk/enum"
+  "github.com/lihongsheng/payment-sdk/enum/channel"
+  "github.com/lihongsheng/payment-sdk/enum/payment"
+  "go.uber.org/zap"
+  "time"
+)
+"context"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/service/dto"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	paySdk "github.com/lihongsheng/payment-sdk"
 	enum2 "github.com/lihongsheng/payment-sdk/enum"
 	"github.com/lihongsheng/payment-sdk/enum/channel"
@@ -18,25 +33,23 @@ import (
 	"math/rand"
 	"time"
 )
-
 type Router interface {
 	GetAvailablePayment(ctx context.Context, req *public.QueryCheckoutPaymentMethod, appInfo *model.Application) ([]*entity.PaymentAccount, error)
 	Router(ctx context.Context, apps []*entity.PaymentAccount, appInfo *model.Application, filterAccountNo []string) (available []*entity.PaymentAccount, last *entity.PaymentAccount, err error)
 	Rand(req []*entity.PaymentAccount) (*entity.PaymentAccount, error)
 }
-
 type routerService struct {
-	svc        *svc.ServiceContext
+	paymentAccountRepo repo.PaymentAccountRepo
+	routerRepo repo.RouterRepo
 	RuleEngine RuleEngine
 }
-
-func NewRouterService(svc *svc.ServiceContext) Router {
+func NewRouterService(paymentAccountRepo repo.PaymentAccountRepo, routerRepo repo.RouterRepo) Router {
 	return &routerService{
-		svc:        svc,
+		paymentAccountRepo: paymentAccountRepo,
+		routerRepo:        routerRepo,
 		RuleEngine: NewRuleEngineService(),
 	}
 }
-
 func (s *routerService) Rand(req []*entity.PaymentAccount) (*entity.PaymentAccount, error) {
 	if len(req) == 0 {
 		return nil, errors.NewError(errors.ErrPayChannelNotSupport, "未找到支持的支付渠道")
@@ -44,7 +57,6 @@ func (s *routerService) Rand(req []*entity.PaymentAccount) (*entity.PaymentAccou
 	// 随机选择一个支付账户
 	return req[rand.Intn(len(req))], nil
 }
-
 func (s *routerService) Router(ctx context.Context, apps []*entity.PaymentAccount, appInfo *model.Application, filterAccountNo []string) (available []*entity.PaymentAccount, last *entity.PaymentAccount, err error) {
 	var result = make([]*entity.PaymentAccount, 0, len(apps))
 	if len(apps) == 0 {
@@ -71,7 +83,6 @@ func (s *routerService) Router(ctx context.Context, apps []*entity.PaymentAccoun
 	}
 	return r, apps[len(apps)-1], nil
 }
-
 func (s *routerService) multiChannelPayment(ctx context.Context, apps []*entity.PaymentAccount, appInfo *model.Application, filterAccountNo []string) ([]*entity.PaymentAccount, error) {
 	// 可以有多个微信支付宝，需要查验某一个微信或者支付宝支付账户是否被 微信/支付宝 平台 封禁，封禁后，则不能再使用。只返回可以使用的。目前先按照 无多个微信和支付宝一样处理。
 	// 需要当 获取不到微信或者支付宝用户openid , 支付返回非签名，网络等错误的时候，更新某一个微信或者支付宝账户为封禁状态，然后剔除。
@@ -83,7 +94,7 @@ func (s *routerService) multiChannelPayment(ctx context.Context, apps []*entity.
 			result = append(result, item)
 		}
 	}
-	statics, err := s.svc.RouterRepo.GetAppRouterStatisticFromCache(ctx, appInfo.AppNo, time.Now())
+	statics, err := s.routerRepo.GetAppRouterStatisticFromCache(ctx, appInfo.AppNo, time.Now())
 	log.WithCtx(ctx).Info("支付渠道路由统计", zap.Any("statics", statics))
 	if err != nil {
 		return result, nil
@@ -116,7 +127,6 @@ func (s *routerService) multiChannelPayment(ctx context.Context, apps []*entity.
 			}
 			routerConditions = append(routerConditions, tmp)
 		}
-
 		accountNos, err := s.RuleEngine.Evaluate(ctx, routerConditions)
 		log.WithCtx(ctx).Info("支付渠道路由条件", zap.Any("routerConditions", routerConditions), zap.Any("accountNos", accountNos), zap.Error(err))
 		if err != nil {
@@ -139,12 +149,11 @@ func (s *routerService) multiChannelPayment(ctx context.Context, apps []*entity.
 	}
 	return result, nil
 }
-
 func (s *routerService) GetAvailablePayment(ctx context.Context, req *public.QueryCheckoutPaymentMethod, appInfo *model.Application) ([]*entity.PaymentAccount, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	apps, err := s.svc.PaymentAccountRepo.GetByAppNoFormCache(ctx, req.AppNo, appInfo.AccountVersion)
+	apps, err := s.paymentAccountRepo.GetByAppNoFormCache(ctx, req.AppNo, appInfo.AccountVersion)
 	if err != nil {
 		return nil, errors.WrapError(errors.ErrPayChannelNotSupport, "未找到支持的支付渠道", err)
 	}
@@ -162,7 +171,6 @@ func (s *routerService) GetAvailablePayment(ctx context.Context, req *public.Que
 	}
 	return availableApps, err
 }
-
 func (s *routerService) getPaymentAccountByDevice(ctx context.Context, apps []*entity.PaymentAccount, device enum2.Device) ([]*entity.PaymentAccount, error) {
 	var result = make([]*entity.PaymentAccount, 0, len(apps))
 	for _, item := range apps {
@@ -186,7 +194,6 @@ func (s *routerService) getPaymentAccountByDevice(ctx context.Context, apps []*e
 	}
 	return result, nil
 }
-
 func (s *routerService) getPaymentAccount(ctx context.Context, apps []*entity.PaymentAccount, paymentMethod payment.Payment, product payment.PaymentProduct) []*entity.PaymentAccount {
 	var result = make([]*entity.PaymentAccount, 0, len(apps))
 	for _, item := range apps {

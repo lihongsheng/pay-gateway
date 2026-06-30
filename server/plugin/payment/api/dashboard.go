@@ -2,148 +2,147 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/lihongsheng/pay-gateway/model/common/response"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/admin"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/service/enter"
-)
 
-type DashboardApi struct {
-}
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
+	servicePay "github.com/lihongsheng/pay-gateway/plugin/payment/service"
+	"github.com/lihongsheng/pay-gateway/utils/response"
+)
 
 // TotalRequest 获取商户总订单数
 // @Tags      DashboardApi
 // @Summary   首页统计数据
 // @Security  ApiKeyAuth
-// @Param admin.MchTradeStatisticRequest
-// @Success 200 {object} response.Response{data=admin.TradeStatistic,msg=string} "查询成功"
+// @Param dto.MchTradeStatisticRequest
+// @Success 200 {object} response.Body{data=dto.TradeStatistic,msg=string} "查询成功"
 // @Router /private/v1/dashboard/total_request [get]
-func (d *DashboardApi) TotalRequest(c *gin.Context) {
-	var req admin.MchTradeStatisticRequest
+func TotalRequest(c *gin.Context) {
+	var req dto.MchTradeStatisticRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
 	user := GetUserInfo(c)
-	if user.UserType.ISMch() {
+	if user.ISMch() {
 		req.MchNo = user.HaveMchNo
 	}
-	data, err := enter.ServiceApiApp.TradeStatisticsService.GetAllRequestOrder(c.Request.Context(), req.MchNo, req.StartTime, req.EndTime)
+	data, err := servicePay.DefaultTradeStatistics.GetAllRequestOrder(c.Request.Context(), req.MchNo, req.StartTime, req.EndTime)
 	if err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
-	response.OkWithData(data, c)
+	response.OK(c, data)
 }
 
 // Index 获取商户交易统计
 // @Tags      DashboardApi
 // @Summary   首页统计数据
 // @Security  ApiKeyAuth
-// @Param admin.MchTradeStatisticRequest
-// @Success 200 {object} response.Response{data=admin.TradeStatistic,msg=string} "查询成功"
+// @Param dto.MchTradeStatisticRequest
+// @Success 200 {object} response.Body{data=dto.TradeStatistic,msg=string} "查询成功"
 // @Router /private/v1/dashboard/index [get]
-func (d *DashboardApi) Index(c *gin.Context) {
-	var req admin.MchTradeStatisticRequest
+func DashboardIndex(c *gin.Context) {
+	var req dto.MchTradeStatisticRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
 	user := GetUserInfo(c)
-	if user.UserType.ISMch() {
-		response.FailWithMessage("无权限", c)
+	if user.ISMch() {
+		response.Fail(c, "无权限")
 		return
 	}
-	data, err := enter.ServiceApiApp.TradeStatisticsService.CountGroup(c.Request.Context(), req.StartTime, req.EndTime)
+	data, err := servicePay.DefaultTradeStatistics.CountGroup(c.Request.Context(), req.StartTime, req.EndTime)
 	if err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
-	response.OkWithData(data, c)
+	response.OK(c, data)
 }
 
-func (d *DashboardApi) MchIndex(c *gin.Context) {
-	var req admin.MchTradeStatisticRequest
+func MchIndex(c *gin.Context) {
+	var req dto.MchTradeStatisticRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
 	user := GetUserInfo(c)
-	if user.UserType.ISMch() {
+	if user.ISMch() {
 		req.MchNo = user.HaveMchNo
 	}
 	if err := user.Validate(); err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
-	data, err := enter.ServiceApiApp.TradeStatisticsService.CountGroupMch(c.Request.Context(), req.MchNo, req.StartTime, req.EndTime)
+	data, err := servicePay.DefaultTradeStatistics.CountGroupMch(c.Request.Context(), req.MchNo, req.StartTime, req.EndTime)
 	if err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
-	response.OkWithData(data, c)
-}
-func (d *DashboardApi) MchAppIndex(c *gin.Context) {
-	var req admin.MchTradeStatisticRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		response.FailWithMessage(err.Error(), c)
-		return
-	}
-	user := GetUserInfo(c)
-	if user.UserType.ISMch() {
-		req.MchNo = user.HaveMchNo
-	}
-	if err := user.Validate(); err != nil {
-		response.FailWithMessage(err.Error(), c)
-		return
-	}
-	data, err := enter.ServiceApiApp.TradeStatisticsService.CountGroupMchApp(c.Request.Context(), req.MchNo, req.AppNo, req.StartTime, req.EndTime)
-	if err != nil {
-		response.FailWithMessage(err.Error(), c)
-		return
-	}
-	response.OkWithData(data, c)
+	response.OK(c, data)
 }
 
-func (d *DashboardApi) MchAppAccountAllIndex(c *gin.Context) {
-	var req admin.MchTradeStatisticRequest
+func MchAppIndex(c *gin.Context) {
+	var req dto.MchTradeStatisticRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
 	user := GetUserInfo(c)
-	if user.UserType.ISMch() {
+	if user.ISMch() {
 		req.MchNo = user.HaveMchNo
 	}
 	if err := user.Validate(); err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
-	data, err := enter.ServiceApiApp.TradeStatisticsService.CountGroupMchAppAccount(c.Request.Context(), req.MchNo, req.AppNo, req.StartTime, req.EndTime)
+	data, err := servicePay.DefaultTradeStatistics.CountGroupMchApp(c.Request.Context(), req.MchNo, req.AppNo, req.StartTime, req.EndTime)
 	if err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
-	response.OkWithData(data, c)
+	response.OK(c, data)
 }
 
-func (d *DashboardApi) SearchIndex(c *gin.Context) {
-	var req admin.MchTradeStatisticRequest
+func MchAppAccountAllIndex(c *gin.Context) {
+	var req dto.MchTradeStatisticRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
 	user := GetUserInfo(c)
-	if user.UserType.ISMch() {
+	if user.ISMch() {
 		req.MchNo = user.HaveMchNo
 	}
 	if err := user.Validate(); err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
-	data, err := enter.ServiceApiApp.TradeStatisticsService.SearchDashboard(c.Request.Context(), &req)
+	data, err := servicePay.DefaultTradeStatistics.CountGroupMchAppAccount(c.Request.Context(), req.MchNo, req.AppNo, req.StartTime, req.EndTime)
 	if err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
-	response.OkWithData(data, c)
+	response.OK(c, data)
+}
+
+func SearchIndex(c *gin.Context) {
+	var req dto.MchTradeStatisticRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.Fail(c, err.Error())
+		return
+	}
+	user := GetUserInfo(c)
+	if user.ISMch() {
+		req.MchNo = user.HaveMchNo
+	}
+	if err := user.Validate(); err != nil {
+		response.Fail(c, err.Error())
+		return
+	}
+	data, err := servicePay.DefaultTradeStatistics.SearchDashboard(c.Request.Context(), &req)
+	if err != nil {
+		response.Fail(c, err.Error())
+		return
+	}
+	response.OK(c, data)
 }

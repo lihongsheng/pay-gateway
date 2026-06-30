@@ -1,69 +1,64 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
-	"github.com/lihongsheng/pay-gateway/model/common/response"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
+	"go.uber.org/zap"
+
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/service/enter"
+	servicePay "github.com/lihongsheng/pay-gateway/plugin/payment/service"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/utils"
-	"go.uber.org/zap"
-	"net/http"
+	"github.com/lihongsheng/pay-gateway/utils/response"
 )
 
-type PublicRefundApi struct {
-}
-
-func (a *PublicRefundApi) Refund(c *gin.Context) {
+func Refund(c *gin.Context) {
 	req := public.RefundRequest{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
 	req.RefundFrom = enum.RefundFrom_API
-	resp, err := enter.ServiceApiApp.RefundService.Refund(c.Request.Context(), &req)
+	resp, err := servicePay.DefaultRefund.Refund(c.Request.Context(), &req)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
 	}
-	response.OkWithData(resp, c)
+	response.OK(c, resp)
 }
 
-func (a *PublicRefundApi) Query(c *gin.Context) {
+func QueryRefund(c *gin.Context) {
 	req := public.RefundQueryRequest{}
 	if err := c.ShouldBindQuery(&req); err != nil {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	resp, err := enter.ServiceApiApp.RefundService.Query(c.Request.Context(), &req)
+	resp, err := servicePay.DefaultRefund.Query(c.Request.Context(), &req)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
 	}
-	response.OkWithData(resp, c)
+	response.OK(c, resp)
 }
 
+// FailMessage 返回错误响应（带错误码）
 func FailMessage(code int, message string, c *gin.Context) {
-	response.Result(code, nil, message, c)
+	response.FailCode(c, code, message)
 }
 
+// FailErrMessage 从 payment error 返回错误响应
 func FailErrMessage(err error, c *gin.Context) {
 	if paymentErr, ok := err.(*errors.Error); ok {
-		c.JSON(http.StatusOK, response.Response{
-			Code: paymentErr.Code,
-			Msg:  paymentErr.Message,
-		})
+		response.FailCode(c, paymentErr.Code, paymentErr.Message)
 	} else {
-		c.JSON(http.StatusOK, response.Response{
-			Code: paymentErr.Code,
-			Msg:  paymentErr.Message,
-		})
+		response.Fail(c, err.Error())
 	}
 }
 
-func (a *PublicRefundApi) Callback(c *gin.Context) {
+func RefundCallback(c *gin.Context) {
 	channel := c.Param("channel")
 	mchNo := c.Param("mchNo")
 	appNo := c.Param("appNo")
@@ -76,7 +71,7 @@ func (a *PublicRefundApi) Callback(c *gin.Context) {
 		return
 	}
 
-	resp, err := enter.ServiceApiApp.RefundService.PublishCallback(c.Request.Context(), c.Request, channel, mchNo, appNo, tradeNo)
+	resp, err := servicePay.DefaultRefund.PublishCallback(c.Request.Context(), c.Request, channel, mchNo, appNo, tradeNo)
 	if err != nil {
 		l.Error("PublicRefundApiCallback", zap.Error(err), zap.String("mchNo", mchNo), zap.String("appNo", appNo), zap.String("tradeNo", tradeNo))
 		FailErrMessage(err, c)

@@ -3,7 +3,7 @@ package domain
 import (
 	"context"
 	errors2 "github.com/lihongsheng/pay-gateway/plugin/payment/errors"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/service/dto"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 )
 
 type RuleEngine interface {

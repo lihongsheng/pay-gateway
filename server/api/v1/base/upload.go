@@ -1,9 +1,9 @@
 package base
 
 import (
-	"github.com/lihongsheng/go-admin/server/global"
-	"github.com/lihongsheng/go-admin/server/utils/response"
-	"github.com/lihongsheng/go-admin/server/utils/upload"
+	"github.com/lihongsheng/pay-gateway/global"
+	"github.com/lihongsheng/pay-gateway/utils/response"
+	"github.com/lihongsheng/pay-gateway/utils/upload"
 	"strings"
 
 	"github.com/gin-gonic/gin"

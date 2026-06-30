@@ -4,15 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/admin"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
+	"time"
+
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	enum2 "github.com/lihongsheng/pay-gateway/plugin/payment/enum"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/dao"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
 	"github.com/lihongsheng/payment-sdk/enum/refund"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
-	"time"
 )
 
 type RefundRepo interface {
@@ -20,23 +20,25 @@ type RefundRepo interface {
 	GetFromCache(ctx context.Context, request public.RefundQueryRequest) (*model.RefundOrder, error)
 	Save(ctx context.Context, refundOrder *model.RefundOrder) error
 	CountAmount(ctx context.Context, mchNO, appNo, orderNo string, status []refund.Status) (int64, error)
-	Search(ctx context.Context, req *admin.RefundSearchRequest) ([]*model.RefundOrder, error)
-	Count(ctx context.Context, req *admin.RefundSearchRequest) (int64, error)
+	Search(ctx context.Context, req *dto.RefundSearchRequest) ([]*model.RefundOrder, error)
+	Count(ctx context.Context, req *dto.RefundSearchRequest) (int64, error)
 	ConfirmNotifyStatus(ctx context.Context, id int64, status enum2.NotifyStatus) error
 	GetRefund(ctx context.Context, mchNO string, appNO string, refundTradeNo string) (*model.RefundOrder, error)
 	//SaveWithTransaction(ctx context.Context, refundOrder *model.RefundOrder, tx *gorm.DB) error
 }
 
 type refundRepoImpl struct {
+	db  *gorm.DB
+	rdb *redis.Client
 }
 
-func NewRefundRepo() RefundRepo {
-	return &refundRepoImpl{}
+func NewRefundRepo(db *gorm.DB, rdb *redis.Client) RefundRepo {
+	return &refundRepoImpl{db: db, rdb: rdb}
 }
 
 func (r *refundRepoImpl) GetRefund(ctx context.Context, mchNO string, appNO string, refundTradeNo string) (*model.RefundOrder, error) {
 	var refundOrder model.RefundOrder
-	err := global.GVA_PAY_DB.WithContext(ctx).Where(dao.RefundOrder.MchNo.Eq(mchNO), dao.RefundOrder.AppNo.Eq(appNO), dao.RefundOrder.RefundTradeNo.Eq(refundTradeNo)).First(&refundOrder).Error
+	err := r.db.WithContext(ctx).Where("mch_no = ? AND app_no = ? AND refund_trade_no = ?", mchNO, appNO, refundTradeNo).First(&refundOrder).Error
 	if err != nil {
 		return nil, err
 	}
@@ -44,10 +46,10 @@ func (r *refundRepoImpl) GetRefund(ctx context.Context, mchNO string, appNO stri
 }
 
 func (r *refundRepoImpl) ConfirmNotifyStatus(ctx context.Context, id int64, status enum2.NotifyStatus) error {
-	return global.GVA_PAY_DB.WithContext(ctx).Model(&model.RefundOrder{}).Where("id = ?", id).Update("notify_status", status).Error
+	return r.db.WithContext(ctx).Model(&model.RefundOrder{}).Where("id = ?", id).Update("notify_status", status).Error
 }
 
-func (r *refundRepoImpl) Search(ctx context.Context, req *admin.RefundSearchRequest) ([]*model.RefundOrder, error) {
+func (r *refundRepoImpl) Search(ctx context.Context, req *dto.RefundSearchRequest) ([]*model.RefundOrder, error) {
 	query := r.buildAdminQuery(ctx, req)
 	var refunds []*model.RefundOrder
 	if req.PageSize > 0 && req.Page > 0 {
@@ -60,7 +62,7 @@ func (r *refundRepoImpl) Search(ctx context.Context, req *admin.RefundSearchRequ
 	return refunds, nil
 }
 
-func (r *refundRepoImpl) Count(ctx context.Context, req *admin.RefundSearchRequest) (int64, error) {
+func (r *refundRepoImpl) Count(ctx context.Context, req *dto.RefundSearchRequest) (int64, error) {
 	query := r.buildAdminQuery(ctx, req)
 	var count int64
 	err := query.Count(&count).Error
@@ -70,44 +72,44 @@ func (r *refundRepoImpl) Count(ctx context.Context, req *admin.RefundSearchReque
 	return count, nil
 }
 
-func (r *refundRepoImpl) buildAdminQuery(ctx context.Context, req *admin.RefundSearchRequest) *gorm.DB {
-	query := global.GVA_PAY_DB.WithContext(ctx).Model(&model.RefundOrder{})
+func (r *refundRepoImpl) buildAdminQuery(ctx context.Context, req *dto.RefundSearchRequest) *gorm.DB {
+	query := r.db.WithContext(ctx).Model(&model.RefundOrder{})
 	if req.MchNo != "" {
-		query = query.Where(dao.RefundOrder.MchNo.Eq(req.MchNo))
+		query = query.Where("mch_no = ?", req.MchNo)
 	}
 	if req.AppNo != "" {
-		query = query.Where(dao.RefundOrder.AppNo.Eq(req.AppNo))
+		query = query.Where("app_no = ?", req.AppNo)
 	}
 	if req.OrderNo != "" {
-		query = query.Where(dao.RefundOrder.OrderNo.Eq(req.OrderNo))
+		query = query.Where("order_no = ?", req.OrderNo)
 	}
 	if req.TradeNo != "" {
-		query = query.Where(dao.RefundOrder.RefundTradeNo.Eq(req.TradeNo))
+		query = query.Where("refund_trade_no = ?", req.TradeNo)
 	}
 	if req.RefundNo != "" {
-		query = query.Where(dao.RefundOrder.RefundNo.Eq(req.RefundNo))
+		query = query.Where("refund_no = ?", req.RefundNo)
 	}
 	if !req.StartTime.IsZero() {
-		query = query.Where(dao.RefundOrder.CreatedAt.Gte(req.StartTime))
+		query = query.Where("created_at >= ?", req.StartTime)
 	}
 	if !req.EndTime.IsZero() {
-		query = query.Where(dao.RefundOrder.CreatedAt.Lte(req.EndTime))
+		query = query.Where("created_at <= ?", req.EndTime)
 	}
 	if req.Status != 0 {
-		query = query.Where(dao.RefundOrder.Status.Eq(int64(req.Status)))
+		query = query.Where("status = ?", int64(req.Status))
 	}
 	return query
 }
 
 func (r *refundRepoImpl) CountAmount(ctx context.Context, mchNO, appNo, orderNo string, status []refund.Status) (int64, error) {
 	var amount int64
-	query := global.GVA_PAY_DB.WithContext(ctx).Model(&model.RefundOrder{}).Select("IFNULL(SUM(refund_amount), 0) AS total_refund_amount").Where(dao.RefundOrder.MchNo.Eq(mchNO), dao.RefundOrder.AppNo.Eq(appNo), dao.RefundOrder.OrderNo.Eq(orderNo))
+	query := r.db.WithContext(ctx).Model(&model.RefundOrder{}).Select("IFNULL(SUM(refund_amount), 0) AS total_refund_amount").Where("mch_no = ? AND app_no = ? AND order_no = ?", mchNO, appNo, orderNo)
 	if len(status) > 0 {
 		s := []int64{}
 		for _, v := range status {
 			s = append(s, int64(v))
 		}
-		query = query.Where(dao.RefundOrder.Status.In(s...))
+		query = query.Where("status IN ?", s)
 	}
 	err := query.First(&amount).Error
 	if err != nil {
@@ -118,13 +120,13 @@ func (r *refundRepoImpl) CountAmount(ctx context.Context, mchNO, appNo, orderNo 
 
 func (r *refundRepoImpl) GetRefunds(ctx context.Context, mchNO, appNo, orderNo string, status []refund.Status) ([]*model.RefundOrder, error) {
 	var refunds []*model.RefundOrder
-	query := global.GVA_PAY_DB.WithContext(ctx).Where(dao.RefundOrder.MchNo.Eq(mchNO), dao.RefundOrder.AppNo.Eq(appNo), dao.RefundOrder.OrderNo.Eq(orderNo))
+	query := r.db.WithContext(ctx).Where("mch_no = ? AND app_no = ? AND order_no = ?", mchNO, appNo, orderNo)
 	if len(status) > 0 {
 		s := []int64{}
 		for _, v := range status {
 			s = append(s, int64(v))
 		}
-		query = query.Where(dao.RefundOrder.Status.In(s...))
+		query = query.Where("status IN ?", s)
 	}
 	err := query.Find(&refunds).Error
 	if err != nil {
@@ -136,7 +138,7 @@ func (r *refundRepoImpl) GetRefunds(ctx context.Context, mchNO, appNo, orderNo s
 func (r *refundRepoImpl) GetFromCache(ctx context.Context, req public.RefundQueryRequest) (*model.RefundOrder, error) {
 	key := r.genRefundKey(req)
 	var m model.RefundOrder
-	cache, err := global.GVA_REDIS.Get(ctx, key).Result()
+	cache, err := r.rdb.Get(ctx, key).Result()
 	if err == nil && len(cache) > 0 {
 		_ = json.Unmarshal([]byte(cache), &m)
 		if m.ID > 0 {
@@ -144,12 +146,12 @@ func (r *refundRepoImpl) GetFromCache(ctx context.Context, req public.RefundQuer
 		}
 	}
 
-	query := global.GVA_PAY_DB.WithContext(ctx).Where(dao.RefundOrder.MchNo.Eq(req.MchNo), dao.RefundOrder.AppNo.Eq(req.AppNo))
+	query := r.db.WithContext(ctx).Where("mch_no = ? AND app_no = ?", req.MchNo, req.AppNo)
 	if req.RefundNo != "" {
-		query = query.Where(dao.RefundOrder.RefundNo.Eq(req.RefundNo))
+		query = query.Where("refund_no = ?", req.RefundNo)
 	}
 	if req.RefundTradeNo != "" {
-		query = query.Where(dao.RefundOrder.RefundTradeNo.Eq(req.RefundTradeNo))
+		query = query.Where("refund_trade_no = ?", req.RefundTradeNo)
 	}
 	err = query.First(&m).Error
 	if err != nil {
@@ -157,7 +159,7 @@ func (r *refundRepoImpl) GetFromCache(ctx context.Context, req public.RefundQuer
 	}
 	bytes, _ := json.Marshal(m)
 	if len(bytes) > 0 {
-		_ = global.GVA_REDIS.Set(ctx, key, string(bytes), time.Minute*10)
+		_ = r.rdb.Set(ctx, key, string(bytes), time.Minute*10)
 	}
 	return &m, nil
 }
@@ -172,7 +174,6 @@ func (r *refundRepoImpl) getRefundKey(req public.RefundQueryRequest) []string {
 		fmt.Sprintf("refund:%s:%s:%s:%s", req.MchNo, req.AppNo, "", req.RefundTradeNo),
 		fmt.Sprintf("refund:%s:%s:%s:%s", req.MchNo, req.AppNo, req.RefundNo, ""),
 	}
-	//return fmt.Sprintf("refund:%s:%s:%s:%s", req.MchNo, req.AppNo, req.RefundNo,req.RefundTradeNo)
 }
 
 func (r *refundRepoImpl) Save(ctx context.Context, refundOrder *model.RefundOrder) error {
@@ -182,20 +183,12 @@ func (r *refundRepoImpl) Save(ctx context.Context, refundOrder *model.RefundOrde
 		RefundNo:      refundOrder.RefundNo,
 		RefundTradeNo: refundOrder.RefundTradeNo,
 	})
-	global.GVA_REDIS.Del(ctx, cacheKeys...)
+	r.rdb.Del(ctx, cacheKeys...)
 	if refundOrder.NotifyURL != "" && refundOrder.NotifyStatus == 0 {
 		refundOrder.NotifyStatus = int64(enum2.NotifyStatus_Init)
 	}
 	refundOrder.UpdatedAt = time.Now()
-	err := global.GVA_PAY_DB.WithContext(ctx).Save(refundOrder).Error
-	global.GVA_REDIS.Del(ctx, cacheKeys...)
+	err := r.db.WithContext(ctx).Save(refundOrder).Error
+	r.rdb.Del(ctx, cacheKeys...)
 	return err
 }
-
-//func (r *refundRepoImpl) SaveWithTransaction(ctx context.Context, refundOrder *model.RefundOrder, tx *gorm.DB) error {
-//	if refundOrder.NotifyURL != "" && refundOrder.NotifyStatus == 0 {
-//		refundOrder.NotifyStatus = int64(enum2.NotifyStatus_Init)
-//	}
-//	refundOrder.UpdatedAt = time.Now()
-//	return tx.WithContext(ctx).Model(&model.RefundOrder{}).Save(refundOrder).Error
-//}

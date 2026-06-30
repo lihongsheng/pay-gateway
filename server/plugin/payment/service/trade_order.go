@@ -3,37 +3,47 @@ package service
 import (
 	"context"
 	"errors"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/admin"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/service/dto"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
-	"github.com/lihongsheng/payment-sdk/enum/payment"
 	"time"
+
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
+	dtoSys "github.com/lihongsheng/pay-gateway/dto/system"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
+	"github.com/lihongsheng/payment-sdk/enum/payment"
 )
 
 type TradeOrderService interface {
-	Search(ctx context.Context, req *admin.TradeSearchRequest) ([]*admin.TradeSearchResponse, error)
-	Count(ctx context.Context, req *admin.TradeSearchRequest) (int64, error)
-	Detail(ctx context.Context, mchNO string, appNO string, orderNo string) (*admin.TradeOrderDetail, error)
+	Search(ctx context.Context, req *dto.TradeSearchRequest) ([]*dto.TradeSearchResponse, error)
+	Count(ctx context.Context, req *dto.TradeSearchRequest) (int64, error)
+	Detail(ctx context.Context, mchNO string, appNO string, orderNo string) (*dto.TradeOrderDetail, error)
 	Log(ctx context.Context, machID int64, orderNo string, user *dto.User) ([]*model.PaymentRequestLog, error)
 }
 
 type tradeOrderService struct {
-	svc *svc.ServiceContext
+	paymentOrderRepo   repo.PaymentOrderRepo
+	mchRepo            repo.MchRepo
+	appRepo            repo.ApplicationRepo
+	paymentAccountRepo repo.PaymentAccountRepo
 }
 
-func NewTradeOrderService(svc *svc.ServiceContext) TradeOrderService {
+func NewTradeOrderService(paymentOrderRepo repo.PaymentOrderRepo, mchRepo repo.MchRepo, appRepo repo.ApplicationRepo, paymentAccountRepo repo.PaymentAccountRepo) TradeOrderService {
 	return &tradeOrderService{
-		svc: svc,
+		paymentOrderRepo:   paymentOrderRepo,
+		mchRepo:            mchRepo,
+		appRepo:            appRepo,
+		paymentAccountRepo: paymentAccountRepo,
 	}
 }
 
-func (t *tradeOrderService) Search(ctx context.Context, req *admin.TradeSearchRequest) ([]*admin.TradeSearchResponse, error) {
+// DefaultTradeOrder 包级单例
+var DefaultTradeOrder TradeOrderService
+
+func (t *tradeOrderService) Search(ctx context.Context, req *dto.TradeSearchRequest) ([]*dto.TradeSearchResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	models, err := t.svc.PaymentOrderRepo.SearchModel(ctx, &admin.SearchRequest{
+	models, err := t.paymentOrderRepo.SearchModel(ctx, &dto.SearchRequest{
 		OrderNo:   req.OrderNo,
 		TradeNo:   req.TradeNo,
 		AppNo:     req.AppNo,
@@ -53,18 +63,18 @@ func (t *tradeOrderService) Search(ctx context.Context, req *admin.TradeSearchRe
 	return t.EntityToParamResponse(ctx, models)
 }
 
-func (t *tradeOrderService) EntityToParamResponse(ctx context.Context, req []*model.PaymentOrder) ([]*admin.TradeSearchResponse, error) {
+func (t *tradeOrderService) EntityToParamResponse(ctx context.Context, req []*model.PaymentOrder) ([]*dto.TradeSearchResponse, error) {
 	mch, app, paymentAccount, err := t.getLink(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	var res []*admin.TradeSearchResponse
+	var res []*dto.TradeSearchResponse
 	for _, v := range req {
 		accountName := ""
 		if paymentAccount[v.PaymentAccountNo] != nil {
 			accountName = paymentAccount[v.PaymentAccountNo].Name
 		}
-		tmp := &admin.TradeSearchResponse{
+		tmp := &dto.TradeSearchResponse{
 			MchNo:          v.MchNo,
 			MchName:        mch[v.MchNo].MchName,
 			AppNo:          v.AppNo,
@@ -107,7 +117,7 @@ func (t *tradeOrderService) getLink(ctx context.Context, req []*model.PaymentOrd
 			existPaymentAccountNos[v.PaymentAccountNo] = v.PaymentAccountNo
 		}
 	}
-	mchs, err := t.svc.MchRepo.Search(ctx, admin.MchQueryRequest{MchNos: mchNos, Page: 1, PageSize: len(mchNos)})
+	mchs, err := t.mchRepo.Search(ctx, dtoSys.MchQueryRequest{MchNos: mchNos, Page: 1, PageSize: len(mchNos)})
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -118,7 +128,7 @@ func (t *tradeOrderService) getLink(ctx context.Context, req []*model.PaymentOrd
 	for _, v := range mchs {
 		mch[v.MchNo] = v
 	}
-	apps, err := t.svc.AppRepo.Search(ctx, &admin.ApplicationQueryRequest{AppNos: appNos, Page: 1, PageSize: len(appNos)})
+	apps, err := t.appRepo.Search(ctx, &dto.ApplicationQueryRequest{AppNos: appNos, Page: 1, PageSize: len(appNos)})
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -129,25 +139,22 @@ func (t *tradeOrderService) getLink(ctx context.Context, req []*model.PaymentOrd
 	for _, v := range apps {
 		app[v.AppNo] = v
 	}
-	paymentAccounts, err := t.svc.PaymentAccountRepo.GetOnlyAccountNo(ctx, paymentAccountNos)
+	paymentAccounts, err := t.paymentAccountRepo.GetOnlyAccountNo(ctx, paymentAccountNos)
 	paymentAccount = map[string]*model.PaymentAccount{}
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	//if len(paymentAccounts) == 0 {
-	//	return nil, nil, nil, errors.New("支付账户不存在")
-	//}
 	for _, v := range paymentAccounts {
 		paymentAccount[v.AccountNo] = v
 	}
 	return mch, app, paymentAccount, nil
 }
 
-func (t *tradeOrderService) Count(ctx context.Context, req *admin.TradeSearchRequest) (int64, error) {
+func (t *tradeOrderService) Count(ctx context.Context, req *dto.TradeSearchRequest) (int64, error) {
 	if err := req.Validate(); err != nil {
 		return 0, err
 	}
-	c, err := t.svc.PaymentOrderRepo.Count(ctx, &admin.SearchRequest{
+	c, err := t.paymentOrderRepo.Count(ctx, &dto.SearchRequest{
 		OrderNo:   req.OrderNo,
 		TradeNo:   req.TradeNo,
 		AppNo:     req.AppNo,
@@ -164,11 +171,11 @@ func (t *tradeOrderService) Count(ctx context.Context, req *admin.TradeSearchReq
 	return c, nil
 }
 
-func (t *tradeOrderService) Detail(ctx context.Context, mchNO string, appNO string, orderNo string) (*admin.TradeOrderDetail, error) {
+func (t *tradeOrderService) Detail(ctx context.Context, mchNO string, appNO string, orderNo string) (*dto.TradeOrderDetail, error) {
 	if mchNO == "" || orderNo == "" || appNO == "" {
 		return nil, errors.New("参数错误")
 	}
-	m, err := t.svc.PaymentOrderRepo.GetModel(ctx, public.QueryPaymentRequest{
+	m, err := t.paymentOrderRepo.GetModel(ctx, public.QueryPaymentRequest{
 		OrderNo: orderNo,
 		MchNo:   mchNO,
 		AppNo:   appNO,
@@ -183,14 +190,14 @@ func (t *tradeOrderService) Detail(ctx context.Context, mchNO string, appNO stri
 	return detail[0], nil
 }
 
-func (t *tradeOrderService) EntityToParamResponseDetail(ctx context.Context, req []*model.PaymentOrder) ([]*admin.TradeOrderDetail, error) {
+func (t *tradeOrderService) EntityToParamResponseDetail(ctx context.Context, req []*model.PaymentOrder) ([]*dto.TradeOrderDetail, error) {
 	mch, app, paymentAccount, err := t.getLink(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	var res []*admin.TradeOrderDetail
+	var res []*dto.TradeOrderDetail
 	for _, v := range req {
-		tmp := &admin.TradeOrderDetail{
+		tmp := &dto.TradeOrderDetail{
 			MchNo:          v.MchNo,
 			MchName:        mch[v.MchNo].MchName,
 			AppNo:          v.AppNo,
@@ -213,9 +220,7 @@ func (t *tradeOrderService) EntityToParamResponseDetail(ctx context.Context, req
 			ThirdCode:      v.ThirdCode,
 			Subject:        v.OrderSubject,
 			Desc:           v.OrderDesc,
-			//NotifyStatus:   v.NotifyURL,
-			//UserOpenId:     v.UserOpenId,
-			NotifyStatus: int(v.NotifyStatus),
+			NotifyStatus:   int(v.NotifyStatus),
 		}
 		res = append(res, tmp)
 	}

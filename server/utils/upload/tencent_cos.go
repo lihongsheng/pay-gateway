@@ -1,17 +1,15 @@
 package upload
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"github.com/lihongsheng/go-admin/server/config"
-	"github.com/lihongsheng/go-admin/server/log"
-	"mime/multipart"
-	"net/http"
-	"net/url"
-	"time"
-
-	"github.com/tencentyun/cos-go-sdk-v5"
+  "context"
+  "errors"
+  "fmt"
+  "github.com/lihongsheng/pay-gateway/config"
+  "github.com/lihongsheng/pay-gateway/log"
+  "mime/multipart"
+  "net/http"
+  "net/url"
+  "time"
 )
 
 type TencentCOS struct {

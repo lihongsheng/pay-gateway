@@ -1,64 +1,63 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/lihongsheng/pay-gateway/model/common/response"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
+
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/service/enter"
-	"net/http"
+	servicePay "github.com/lihongsheng/pay-gateway/plugin/payment/service"
+	"github.com/lihongsheng/pay-gateway/utils/response"
 )
 
-type PublicPaymentApi struct {
-}
-
-func (a *PublicPaymentApi) Pay(c *gin.Context) {
+func Pay(c *gin.Context) {
 	var req public.PaymentOrder
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	resp, err := enter.ServiceApiApp.PaymentService.Payment(c.Request.Context(), &req, uuid.NewString())
+	resp, err := servicePay.DefaultPayment.Payment(c.Request.Context(), &req, uuid.NewString())
 	if err != nil {
 		FailErrMessage(err, c)
 		return
 	}
-	response.OkWithData(resp, c)
+	response.OK(c, resp)
 }
 
-func (a *PublicPaymentApi) Query(c *gin.Context) {
+func QueryPayment(c *gin.Context) {
 	var req public.QueryPaymentRequest
 	err := c.ShouldBindQuery(&req)
 	if err != nil {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	resp, err := enter.ServiceApiApp.PaymentService.Query(c.Request.Context(), &req)
+	resp, err := servicePay.DefaultPayment.Query(c.Request.Context(), &req)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
 	}
-	response.OkWithData(resp, c)
+	response.OK(c, resp)
 }
 
-func (a *PublicPaymentApi) Close(c *gin.Context) {
+func ClosePayment(c *gin.Context) {
 	var req public.QueryPaymentRequest
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	err = enter.ServiceApiApp.PaymentService.Close(c.Request.Context(), &req)
+	err = servicePay.DefaultPayment.Close(c.Request.Context(), &req)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
 	}
-	response.Ok(c)
+	response.OK(c, nil)
 }
 
-func (a *PublicPaymentApi) Callback(c *gin.Context) {
+func PaymentCallback(c *gin.Context) {
 	channel := c.Param("channel")
 	mchNo := c.Param("mchNo")
 	appNo := c.Param("appNo")
@@ -67,7 +66,7 @@ func (a *PublicPaymentApi) Callback(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, "参数错误", c)
 		return
 	}
-	resp, err := enter.ServiceApiApp.PaymentService.PublishCallback(c.Request.Context(), c.Request, channel, mchNo, appNo, orderNo, false)
+	resp, err := servicePay.DefaultPayment.PublishCallback(c.Request.Context(), c.Request, channel, mchNo, appNo, orderNo, false)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -75,10 +74,9 @@ func (a *PublicPaymentApi) Callback(c *gin.Context) {
 
 	c.String(http.StatusOK, resp)
 	return
-
 }
 
-func (a *PublicPaymentApi) TestCallback(c *gin.Context) {
+func PaymentTestCallback(c *gin.Context) {
 	channel := c.Param("channel")
 	mchNo := c.Param("mchNo")
 	appNo := c.Param("appNo")
@@ -87,7 +85,7 @@ func (a *PublicPaymentApi) TestCallback(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, "参数错误", c)
 		return
 	}
-	resp, err := enter.ServiceApiApp.PaymentService.PublishCallback(c.Request.Context(), c.Request, channel, mchNo, appNo, orderNo, true)
+	resp, err := servicePay.DefaultPayment.PublishCallback(c.Request.Context(), c.Request, channel, mchNo, appNo, orderNo, true)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -95,5 +93,4 @@ func (a *PublicPaymentApi) TestCallback(c *gin.Context) {
 
 	c.String(http.StatusOK, resp)
 	return
-
 }

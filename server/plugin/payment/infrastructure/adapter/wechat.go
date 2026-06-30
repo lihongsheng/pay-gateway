@@ -57,30 +57,30 @@ func NewWechatUser() AggregateUser {
 func (a *CacheWechat) Get(key string) interface{} {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-	return global.GVA_REDIS.Get(ctx, key).String()
+	return global.Redis.Get(ctx, key).String()
 }
 
 func (a *CacheWechat) Set(key string, val interface{}, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-	return global.GVA_REDIS.Set(ctx, key, val, timeout).Err()
+	return global.Redis.Set(ctx, key, val, timeout).Err()
 }
 
 func (a *CacheWechat) IsExist(key string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-	return global.GVA_REDIS.Exists(ctx, key).Val() > 0
+	return global.Redis.Exists(ctx, key).Val() > 0
 }
 
 func (a *CacheWechat) Delete(key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-	return global.GVA_REDIS.Del(ctx, key).Err()
+	return global.Redis.Del(ctx, key).Err()
 }
 
 func (a *WechatUser) GetUserOpenID(ctx context.Context, authCode string, accountDetail *entity.PaymentAccount, app *model.Application, paymentMethod payment.Payment) (string, error) {
 	// 测试后删除
-	if (global.GVA_CONFIG.Env.IsTest() || global.GVA_CONFIG.Env.IsLocal()) && accountDetail.AccountNo == "P6b5df34ad2800" {
+	if (global.Cfg.Payment.IsTest() || global.Cfg.Payment.IsTest()) && accountDetail.AccountNo == "P6b5df34ad2800" {
 		return "", errors2.NewError(errors2.ErrUserLimit, "限制登录")
 	}
 	var conf wechatConfig.Config

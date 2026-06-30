@@ -3,12 +3,12 @@ package repo
 import (
 	"context"
 	"errors"
-	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/admin"
+	"time"
+
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"time"
 )
 
 type TradeStaticsRepo interface {
@@ -18,18 +18,19 @@ type TradeStaticsRepo interface {
 	CountGroupMch(ctx context.Context, mchNo string, start, end time.Time) ([]*model.TradeStatistic, error)
 	CountGroupMchApp(ctx context.Context, mchNo string, appNo string, start, end time.Time) ([]*model.TradeStatistic, error)
 	CountGroupMchAppAccount(ctx context.Context, mchNo string, appNo string, start, end time.Time) ([]*model.TradeStatistic, error)
-	SearchDashboard(ctx context.Context, req *admin.MchTradeStatisticRequest) ([]*model.TradeStatistic, error)
-	Count(ctx context.Context, req *admin.MchTradeStatisticRequest) (int64, error)
+	SearchDashboard(ctx context.Context, req *dto.MchTradeStatisticRequest) ([]*model.TradeStatistic, error)
+	Count(ctx context.Context, req *dto.MchTradeStatisticRequest) (int64, error)
 }
 
 type tradeStaticsRepoImpl struct {
+	db *gorm.DB
 }
 
-func NewTradeStaticsRepo() TradeStaticsRepo {
-	return &tradeStaticsRepoImpl{}
+func NewTradeStaticsRepo(db *gorm.DB) TradeStaticsRepo {
+	return &tradeStaticsRepoImpl{db: db}
 }
 
-func (t *tradeStaticsRepoImpl) Count(ctx context.Context, req *admin.MchTradeStatisticRequest) (int64, error) {
+func (t *tradeStaticsRepoImpl) Count(ctx context.Context, req *dto.MchTradeStatisticRequest) (int64, error) {
 	var count int64
 	query := t.BuildQuery(ctx, req)
 	err := query.Count(&count).Error
@@ -39,7 +40,7 @@ func (t *tradeStaticsRepoImpl) Count(ctx context.Context, req *admin.MchTradeSta
 	return count, nil
 }
 
-func (t *tradeStaticsRepoImpl) SearchDashboard(ctx context.Context, req *admin.MchTradeStatisticRequest) ([]*model.TradeStatistic, error) {
+func (t *tradeStaticsRepoImpl) SearchDashboard(ctx context.Context, req *dto.MchTradeStatisticRequest) ([]*model.TradeStatistic, error) {
 	var models []*model.TradeStatistic
 	query := t.BuildQuery(ctx, req)
 	err := query.Model(&model.TradeStatistic{}).Where(query).Order("statistic_date DESC").Find(&models).Error
@@ -49,8 +50,8 @@ func (t *tradeStaticsRepoImpl) SearchDashboard(ctx context.Context, req *admin.M
 	return models, nil
 }
 
-func (t *tradeStaticsRepoImpl) BuildQuery(ctx context.Context, req *admin.MchTradeStatisticRequest) *gorm.DB {
-	query := global.GVA_PAY_DB.WithContext(ctx).Model(&model.TradeStatistic{})
+func (t *tradeStaticsRepoImpl) BuildQuery(ctx context.Context, req *dto.MchTradeStatisticRequest) *gorm.DB {
+	query := t.db.WithContext(ctx).Model(&model.TradeStatistic{})
 	if req.AppNo != "" {
 		query = query.Where("app_no = ?", req.AppNo)
 	}
@@ -100,12 +101,12 @@ func (t *tradeStaticsRepoImpl) Save(ctx context.Context, statics *model.TradeSta
 
 func (t *tradeStaticsRepoImpl) Get(ctx context.Context, mchNo string, appNo string, start, end time.Time) ([]*model.TradeStatistic, error) {
 	var statics []*model.TradeStatistic
-	return statics, global.GVA_PAY_DB.WithContext(ctx).Where("mch_no = ?", mchNo).Where("app_no = ?", appNo).Where("statistic_date >= ?", start.Format("2006-01-02")).Where("statistic_date <= ?", end.Format("2006-01-02")).Find(&statics).Error
+	return statics, t.db.WithContext(ctx).Where("mch_no = ?", mchNo).Where("app_no = ?", appNo).Where("statistic_date >= ?", start.Format("2006-01-02")).Where("statistic_date <= ?", end.Format("2006-01-02")).Find(&statics).Error
 }
 
 func (t *tradeStaticsRepoImpl) CountGroup(ctx context.Context, start, end time.Time) ([]*model.TradeStatistic, error) {
 	var statics []*model.TradeStatistic
-	return statics, global.GVA_PAY_DB.WithContext(ctx).
+	return statics, t.db.WithContext(ctx).
 		Model(&model.TradeStatistic{}).
 		Select("statistic_date",
 			"SUM(total_order) as total_order",
@@ -122,7 +123,7 @@ func (t *tradeStaticsRepoImpl) CountGroup(ctx context.Context, start, end time.T
 
 func (t *tradeStaticsRepoImpl) CountGroupMch(ctx context.Context, mchNo string, start, end time.Time) ([]*model.TradeStatistic, error) {
 	var statics []*model.TradeStatistic
-	return statics, global.GVA_PAY_DB.WithContext(ctx).
+	return statics, t.db.WithContext(ctx).
 		Model(&model.TradeStatistic{}).
 		Select("mch_no", "statistic_date",
 			"SUM(total_order) as total_order",
@@ -140,7 +141,7 @@ func (t *tradeStaticsRepoImpl) CountGroupMch(ctx context.Context, mchNo string, 
 
 func (t *tradeStaticsRepoImpl) CountGroupMchApp(ctx context.Context, mchNo string, appNo string, start, end time.Time) ([]*model.TradeStatistic, error) {
 	var statics []*model.TradeStatistic
-	return statics, global.GVA_PAY_DB.WithContext(ctx).
+	return statics, t.db.WithContext(ctx).
 		Model(&model.TradeStatistic{}).
 		Select("app_no", "mch_no", "statistic_date",
 			"SUM(total_order) as total_order",
@@ -159,7 +160,7 @@ func (t *tradeStaticsRepoImpl) CountGroupMchApp(ctx context.Context, mchNo strin
 
 func (t *tradeStaticsRepoImpl) CountGroupMchAppAccount(ctx context.Context, mchNo string, appNo string, start, end time.Time) ([]*model.TradeStatistic, error) {
 	var statics []*model.TradeStatistic
-	return statics, global.GVA_PAY_DB.WithContext(ctx).
+	return statics, t.db.WithContext(ctx).
 		Model(&model.TradeStatistic{}).
 		Select("app_no", "mch_no", "account_no", "statistic_date",
 			"SUM(total_order) as total_order",

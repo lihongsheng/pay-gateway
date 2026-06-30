@@ -4,18 +4,21 @@ import (
 	"context"
 	errors2 "errors"
 	"fmt"
+	"net/http"
+	"time"
+
 	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
-	config2 "github.com/lihongsheng/pay-gateway/plugin/payment/config"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/contextkey"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/event"
 	enum2 "github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/infrastructure"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/utils"
 	paySdk "github.com/lihongsheng/payment-sdk"
 	"github.com/lihongsheng/payment-sdk/enum"
@@ -23,8 +26,6 @@ import (
 	"github.com/lihongsheng/payment-sdk/enum/payment"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
-	"net/http"
-	"time"
 )
 
 // PaymentService 支付服务
@@ -41,24 +42,43 @@ type PaymentService interface {
 	NotifyHandler(ctx context.Context, req event.PaymentNotifyRetryEvent) error
 	GenPaymentExpireRecord(ctx context.Context, req event.PaymentOrderStatusEvent) error
 }
+
 type paymentService struct {
-	svc    *svc.ServiceContext
-	domain *domain.ServiceGroup
+	paymentOrderRepo   repo.PaymentOrderRepo
+	paymentAccountRepo repo.PaymentAccountRepo
+	appRepo            repo.ApplicationRepo
+	notifyRepo         repo.NotifyRepo
+	event              infrastructure.Event
+	domain             *domain.ServiceGroup
 }
 
-func NewPaymentService(svc *svc.ServiceContext, domain *domain.ServiceGroup) PaymentService {
+func NewPaymentService(
+	paymentOrderRepo repo.PaymentOrderRepo,
+	paymentAccountRepo repo.PaymentAccountRepo,
+	appRepo repo.ApplicationRepo,
+	notifyRepo repo.NotifyRepo,
+	event infrastructure.Event,
+	domain *domain.ServiceGroup,
+) PaymentService {
 	return &paymentService{
-		svc:    svc,
-		domain: domain,
+		paymentOrderRepo:   paymentOrderRepo,
+		paymentAccountRepo: paymentAccountRepo,
+		appRepo:            appRepo,
+		notifyRepo:         notifyRepo,
+		event:              event,
+		domain:             domain,
 	}
 }
+
+// DefaultPayment 包级单例
+var DefaultPayment PaymentService
 
 func (s *paymentService) GenPaymentExpireRecord(ctx context.Context, req event.PaymentOrderStatusEvent) error {
 	if !(req.NewStatus == payment.Status_Pending || req.NewStatus == payment.Status_TempFailed) {
 		return nil
 	}
 	l := log.WithCtx(ctx)
-	payOrder, err := s.svc.PaymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
+	payOrder, err := s.paymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
 		OrderNo: req.OrderNo,
 		TradeNo: "",
 		AppNo:   req.AppNo,
@@ -68,7 +88,7 @@ func (s *paymentService) GenPaymentExpireRecord(ctx context.Context, req event.P
 		return err
 	}
 	if payOrder.IsTimeout() {
-		err := s.svc.PaymentOrderRepo.UpdateStatus(ctx, payOrder, payOrder.Status, map[string]interface{}{
+		err := s.paymentOrderRepo.UpdateStatus(ctx, payOrder, payOrder.Status, map[string]interface{}{
 			"status":      payment.Status_TimeOut,
 			"status_from": "consumerExpire",
 		})
@@ -78,7 +98,7 @@ func (s *paymentService) GenPaymentExpireRecord(ctx context.Context, req event.P
 		return err
 	}
 	te := time.Unix(payOrder.TimeExpire, 0)
-	err = s.svc.PaymentOrderRepo.SavePaymentExpireRecord(ctx, &model.PaymentExpireRecord{
+	err = s.paymentOrderRepo.SavePaymentExpireRecord(ctx, &model.PaymentExpireRecord{
 		AppNo:      payOrder.AppNo,
 		MchNo:      payOrder.MchNo,
 		OrderNo:    payOrder.OrderNo,
@@ -94,14 +114,14 @@ func (s *paymentService) GenPaymentExpireRecord(ctx context.Context, req event.P
 
 func (s *paymentService) NotifyHandler(ctx context.Context, req event.PaymentNotifyRetryEvent) error {
 	l := log.WithCtx(ctx)
-	notify, err := s.svc.NotifyRepo.GetById(ctx, req.NotifyID)
+	notify, err := s.notifyRepo.GetById(ctx, req.NotifyID)
 	if err != nil {
 		return err
 	}
 	if notify.NotifyStatus == int64(enum2.NotifyStatus_Success) || notify.NotifyStatus == int64(enum2.NotifyStatus_Fail) {
 		return nil
 	}
-	payOrder, err := s.svc.PaymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
+	payOrder, err := s.paymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
 		OrderNo: req.OrderNo,
 		TradeNo: "",
 		AppNo:   req.AppNo,
@@ -114,53 +134,21 @@ func (s *paymentService) NotifyHandler(ctx context.Context, req event.PaymentNot
 	return s.notify(ctx, l, payOrder, req.NotifyCount, req.NotifyID)
 }
 
-// CronPushNotifyHandler 定时处理回调
-//func (s *paymentService) CronPushNotifyHandler(ctx context.Context, start time.Time, end time.Time) error {
-//	records, err := s.svc.NotifyRepo.GetRetry(ctx, start, end, 100)
-//	if err != nil {
-//		return err
-//	}
-//	if len(records) == 0 {
-//		return nil
-//	}
-//	l := log.WithCtx(ctx)
-//	for _, record := range records {
-//		// 扔到队列里，防止阻塞
-//		err := s.svc.Event.Publish(ctx, &event.PaymentNotifyRetryEvent{
-//			Base: event.Base{
-//				EventType: event.EventTypePaymentNotifyRetry,
-//				EventId:   fmt.Sprintf("Notify:%d", record.ID),
-//			},
-//			NotifyID:    record.ID,
-//			AppNo:       record.AppNo,
-//			MchNo:       record.MchNo,
-//			OrderNo:     record.OutNo,
-//			TradeNo:     record.TradeNo,
-//			NotifyCount: int(record.NotifyCount),
-//		}, config2.Config.Topic.PaymentNotifyRetry)
-//		if err != nil {
-//			l.Error("发送支付回调失败", zap.Error(err), zap.String("order_no", record.OutNo))
-//			return err
-//		}
-//	}
-//	return nil
-//}
-
 // GenNotifyHandler 回调其他系统
 func (s *paymentService) GenNotifyHandler(ctx context.Context, req event.PaymentOrderStatusEvent) error {
 	if !(req.NewStatus == payment.Status_Success) {
 		return nil
 	}
 	key := "Notify:" + req.EventId
-	lock, err := global.GVA_REDIS.SetNX(ctx, key, time.Now().Unix(), enum2.PaymentLockExpire).Result()
+	lock, err := global.Redis.SetNX(ctx, key, time.Now().Unix(), enum2.PaymentLockExpire).Result()
 	defer func() {
-		global.GVA_REDIS.Del(ctx, key)
+		global.Redis.Del(ctx, key)
 	}()
 	if !lock && err == nil {
 		return errors.NewError(errors.ErrPayPending, "已在处理，请稍后再试")
 	}
 	l := log.WithCtx(ctx)
-	payOrder, err := s.svc.PaymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
+	payOrder, err := s.paymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
 		OrderNo: req.OrderNo,
 		TradeNo: "",
 		AppNo:   req.AppNo,
@@ -173,13 +161,13 @@ func (s *paymentService) GenNotifyHandler(ctx context.Context, req event.Payment
 		l.Warn("回调地址不存在", zap.String("order_no", req.OrderNo))
 		return nil
 	}
-	notify, err := s.svc.NotifyRepo.Get(ctx, req.MchNo, req.AppNo, enum2.NotifyType_Payment, req.OrderNo)
+	notify, err := s.notifyRepo.Get(ctx, req.MchNo, req.AppNo, enum2.NotifyType_Payment, req.OrderNo)
 	if err != nil && !errors2.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
 	if notify == nil {
 		notify = s.buildNotifyRecord(req, payOrder)
-		err := s.svc.NotifyRepo.Save(ctx, notify)
+		err := s.notifyRepo.Save(ctx, notify)
 		if err != nil {
 			return err
 		}
@@ -196,16 +184,16 @@ func (s *paymentService) notify(ctx context.Context, l *zap.Logger, payOrder *en
 
 	if err != nil || (resp != nil && resp.StatusCode != http.StatusOK) {
 		if notifyCount < enum2.NotifyRetryMax {
-			_ = s.svc.NotifyRepo.Retry(ctx, notifyId, time.Now().Add(time.Duration(notifyCount+1)*enum2.NotifyRetryStep))
+			_ = s.notifyRepo.Retry(ctx, notifyId, time.Now().Add(time.Duration(notifyCount+1)*enum2.NotifyRetryStep))
 			return err
 		} else {
-			_ = s.svc.NotifyRepo.UpdateStatus(ctx, notifyId, enum2.NotifyStatus_Fail, "已达最大重试次数")
-			_ = s.svc.PaymentOrderRepo.ConfirmNotifyStatus(ctx, payOrder.ID, enum2.NotifyStatus_Fail)
+			_ = s.notifyRepo.UpdateStatus(ctx, notifyId, enum2.NotifyStatus_Fail, "已达最大重试次数")
+			_ = s.paymentOrderRepo.ConfirmNotifyStatus(ctx, payOrder.ID, enum2.NotifyStatus_Fail)
 		}
 	}
 	if resp != nil && resp.StatusCode == http.StatusOK {
-		err = s.svc.NotifyRepo.UpdateStatus(ctx, notifyId, enum2.NotifyStatus_Success, fmt.Sprintf("httpStatus:%d", http.StatusOK))
-		_ = s.svc.PaymentOrderRepo.ConfirmNotifyStatus(ctx, payOrder.ID, enum2.NotifyStatus_Success)
+		err = s.notifyRepo.UpdateStatus(ctx, notifyId, enum2.NotifyStatus_Success, fmt.Sprintf("httpStatus:%d", http.StatusOK))
+		_ = s.paymentOrderRepo.ConfirmNotifyStatus(ctx, payOrder.ID, enum2.NotifyStatus_Success)
 	}
 	return err
 }
@@ -247,7 +235,7 @@ func (s *paymentService) PublishCallback(ctx context.Context, req *http.Request,
 	if err != nil {
 		return "", err
 	}
-	err = s.svc.Event.Publish(ctx, eventInfo, config2.Config.Topic.PaymentCallback)
+	err = s.event.Publish(ctx, eventInfo, global.Cfg.Payment.Topic.PaymentCallback)
 	if err != nil {
 		l.Error("支付回调处理失败", zap.Error(err), zap.String("trade_no", orderNo), zap.String("app_no", appNo), zap.String("mch_no", mchNo))
 		return "", err
@@ -257,7 +245,7 @@ func (s *paymentService) PublishCallback(ctx context.Context, req *http.Request,
 
 func (s *paymentService) Callback(ctx context.Context, req *http.Request, appNo string, orderNo string, isTest bool) (response string, err error) {
 	l := log.WithCtx(ctx)
-	appInfo, err := s.svc.AppRepo.GetByAppNoFormCache(ctx, appNo)
+	appInfo, err := s.appRepo.GetByAppNoFormCache(ctx, appNo)
 	if err != nil {
 		return "", errors.WrapError(errors.ErrAppNotExist, "应用不存在", err)
 	}
@@ -275,7 +263,7 @@ func (s *paymentService) Callback(ctx context.Context, req *http.Request, appNo 
 	l.Info("回调处理成功", zap.Any("detail", detail), zap.String("orderNo", orderNo))
 	if isTest && detail != nil && detail.Status == payment.Status_Success {
 		// 测试环境回调处理
-		gErr := s.svc.PaymentAccountRepo.SetPayValidateSuccess(ctx, account.AccountNo)
+		gErr := s.paymentAccountRepo.SetPayValidateSuccess(ctx, account.AccountNo)
 		if gErr != nil {
 			l.Error("回调处理失败PaymentAccountRepo", zap.Error(err), zap.String("orderNo", orderNo), zap.String("app_no", appNo), zap.String("mch_no", appInfo.MchNo))
 		}
@@ -297,7 +285,7 @@ func (s *paymentService) Close(ctx context.Context, req *public.QueryPaymentRequ
 		return err
 	}
 	l := log.WithCtx(ctx)
-	appInfo, err := getAppInfoFromCtx(ctx, req.AppNo, s.svc)
+	appInfo, err := getAppInfoFromCtx(ctx, req.AppNo, s.appRepo)
 	if err != nil {
 		return err
 	}
@@ -318,7 +306,7 @@ func (s *paymentService) Query(ctx context.Context, req *public.QueryPaymentRequ
 		return nil, err
 	}
 	l := log.WithCtx(ctx)
-	appInfo, err := getAppInfoFromCtx(ctx, req.AppNo, s.svc)
+	appInfo, err := getAppInfoFromCtx(ctx, req.AppNo, s.appRepo)
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +357,7 @@ func (s *paymentService) Payment(ctx context.Context, req *public.PaymentOrder, 
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	appInfo, err := getAppInfoFromCtx(ctx, req.AppNo, s.svc)
+	appInfo, err := getAppInfoFromCtx(ctx, req.AppNo, s.appRepo)
 	if err != nil {
 		return nil, errors.WrapError(errors.ErrAppNotExist, "应用不存在", err)
 	}
@@ -379,7 +367,7 @@ func (s *paymentService) Payment(ctx context.Context, req *public.PaymentOrder, 
 		req.RequestID = requestID
 	}
 	if req.AccountNo != "" {
-		account, err = s.svc.PaymentAccountRepo.GetByAccountNoFormCache(ctx, req.AccountNo)
+		account, err = s.paymentAccountRepo.GetByAccountNoFormCache(ctx, req.AccountNo)
 		if err != nil {
 			return nil, errors.WrapError(errors.ErrPayChannelNotSupport, "未找到支持的支付渠道", err)
 		}
@@ -411,7 +399,7 @@ func (s *paymentService) Payment(ctx context.Context, req *public.PaymentOrder, 
 }
 
 // getAppInfoFromCtx
-func getAppInfoFromCtx(ctx context.Context, appNo string, svcCtx *svc.ServiceContext) (*model.Application, error) {
+func getAppInfoFromCtx(ctx context.Context, appNo string, appRepo repo.ApplicationRepo) (*model.Application, error) {
 	// 1. 优先从标准 Context 提取（已注入则直接复用）
 	appInfo := contextkey.GetAppInfo(ctx)
 	if appInfo != nil {
@@ -420,5 +408,5 @@ func getAppInfoFromCtx(ctx context.Context, appNo string, svcCtx *svc.ServiceCon
 	if appNo != appInfo.AppNo {
 		return nil, errors.NewError(errors.ErrAppNotExist, "应用不存在")
 	}
-	return svcCtx.AppRepo.GetByAppNoFormCache(ctx, appNo)
+	return appRepo.GetByAppNoFormCache(ctx, appNo)
 }

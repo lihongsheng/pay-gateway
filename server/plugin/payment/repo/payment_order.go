@@ -4,25 +4,26 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/admin"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
+	"time"
+
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
 	"github.com/lihongsheng/payment-sdk/enum/payment"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
-	"time"
 )
 
 type PaymentOrderRepo interface {
 	GetOrderWithCache(ctx context.Context, req public.QueryPaymentRequest) (*entity.PaymentOrder, error)
 	Save(ctx context.Context, order *entity.PaymentOrder) error
 	UpdateStatus(ctx context.Context, req *entity.PaymentOrder, old payment.Status, updates map[string]interface{}) error
-	Search(ctx context.Context, req *admin.SearchRequest) ([]*entity.PaymentOrder, error)
-	Count(ctx context.Context, req *admin.SearchRequest) (int64, error)
+	Search(ctx context.Context, req *dto.SearchRequest) ([]*entity.PaymentOrder, error)
+	Count(ctx context.Context, req *dto.SearchRequest) (int64, error)
 	GetModel(ctx context.Context, req public.QueryPaymentRequest, status []payment.Status) (*model.PaymentOrder, error)
-	SearchModel(ctx context.Context, req *admin.SearchRequest) ([]*model.PaymentOrder, error)
+	SearchModel(ctx context.Context, req *dto.SearchRequest) ([]*model.PaymentOrder, error)
 	DeletePaymentRequestLog(ctx context.Context, lastTime time.Time) error
 	ConfirmNotifyStatus(ctx context.Context, id int64, status enum.NotifyStatus) error
 	SavePaymentExpireRecord(ctx context.Context, req *model.PaymentExpireRecord) error
@@ -32,43 +33,45 @@ type PaymentOrderRepo interface {
 	DeletePaymentExpireRecordByIDs(ctx context.Context, ids []int64) error
 }
 type paymentOrderRepoImpl struct {
+	db  *gorm.DB
+	rdb *redis.Client
 }
 
-func NewPaymentOrderRepo() PaymentOrderRepo {
-	return &paymentOrderRepoImpl{}
+func NewPaymentOrderRepo(db *gorm.DB, rdb *redis.Client) PaymentOrderRepo {
+	return &paymentOrderRepoImpl{db: db, rdb: rdb}
 }
 
 func (p *paymentOrderRepoImpl) DeletePaymentExpireRecordByIDs(ctx context.Context, ids []int64) error {
-	return global.GVA_PAY_DB.WithContext(ctx).Where("id in (?)", ids).Delete(&model.PaymentExpireRecord{}).Error
+	return p.db.WithContext(ctx).Where("id in (?)", ids).Delete(&model.PaymentExpireRecord{}).Error
 }
 
 func (p *paymentOrderRepoImpl) DeletePaymentExpireRecordByID(ctx context.Context, id int64) error {
-	return global.GVA_PAY_DB.WithContext(ctx).Where("id = ?", id).Delete(&model.PaymentExpireRecord{}).Error
+	return p.db.WithContext(ctx).Where("id = ?", id).Delete(&model.PaymentExpireRecord{}).Error
 }
 
 func (p *paymentOrderRepoImpl) SavePaymentExpireRecord(ctx context.Context, req *model.PaymentExpireRecord) error {
-	return global.GVA_PAY_DB.WithContext(ctx).Create(req).Error
+	return p.db.WithContext(ctx).Create(req).Error
 }
 
 func (p *paymentOrderRepoImpl) GetPaymentExpireRecord(ctx context.Context, start, end time.Time, limit int, lastId int64) ([]*model.PaymentExpireRecord, error) {
 	var m []*model.PaymentExpireRecord
-	return m, global.GVA_PAY_DB.WithContext(ctx).Where("expire_time >= ? and expire_time <= ? and id > ?", start, end, lastId).Order("expire_time ASC, id ASC").Limit(limit).Find(&m).Error
+	return m, p.db.WithContext(ctx).Where("expire_time >= ? and expire_time <= ? and id > ?", start, end, lastId).Order("expire_time ASC, id ASC").Limit(limit).Find(&m).Error
 }
 
 func (p *paymentOrderRepoImpl) DeletePaymentExpireRecord(ctx context.Context, lastTime time.Time) error {
-	return global.GVA_PAY_DB.WithContext(ctx).Where("expire_time < ?", lastTime).Delete(&model.PaymentExpireRecord{}).Error
+	return p.db.WithContext(ctx).Where("expire_time < ?", lastTime).Delete(&model.PaymentExpireRecord{}).Error
 }
 
 func (p *paymentOrderRepoImpl) ConfirmNotifyStatus(ctx context.Context, id int64, status enum.NotifyStatus) error {
-	return global.GVA_PAY_DB.WithContext(ctx).Model(&model.PaymentOrder{}).Where("id = ?", id).Update("notify_status", status).Error
+	return p.db.WithContext(ctx).Model(&model.PaymentOrder{}).Where("id = ?", id).Update("notify_status", status).Error
 }
 
-func (p *paymentOrderRepoImpl) SearchModel(ctx context.Context, req *admin.SearchRequest) ([]*model.PaymentOrder, error) {
+func (p *paymentOrderRepoImpl) SearchModel(ctx context.Context, req *dto.SearchRequest) ([]*model.PaymentOrder, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
 	var m []*model.PaymentOrder
-	query := buildQuery(ctx, req)
+	query := p.buildQuery(ctx, req)
 	page := 1
 	pageSize := 10
 	if req.Page > 0 {
@@ -89,7 +92,7 @@ func (p *paymentOrderRepoImpl) GetModel(ctx context.Context, req public.QueryPay
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	query := global.GVA_PAY_DB.WithContext(ctx).Where("mch_no = ? and app_no = ?", req.MchNo, req.AppNo).Preload("PaymentOrderProducts")
+	query := p.db.WithContext(ctx).Where("mch_no = ? and app_no = ?", req.MchNo, req.AppNo).Preload("PaymentOrderProducts")
 	if len(status) > 0 {
 		query = query.Where("status in (?)", status)
 	}
@@ -102,12 +105,12 @@ func (p *paymentOrderRepoImpl) GetModel(ctx context.Context, req public.QueryPay
 	return m, query.First(&m).Error
 }
 
-func (p *paymentOrderRepoImpl) Search(ctx context.Context, req *admin.SearchRequest) ([]*entity.PaymentOrder, error) {
+func (p *paymentOrderRepoImpl) Search(ctx context.Context, req *dto.SearchRequest) ([]*entity.PaymentOrder, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
 	var m []*model.PaymentOrder
-	query := buildQuery(ctx, req)
+	query := p.buildQuery(ctx, req)
 	page := 1
 	pageSize := 10
 	if req.Page > 0 {
@@ -127,8 +130,8 @@ func (p *paymentOrderRepoImpl) Search(ctx context.Context, req *admin.SearchRequ
 	return results, nil
 }
 
-func buildQuery(ctx context.Context, req *admin.SearchRequest) *gorm.DB {
-	query := global.GVA_PAY_DB.WithContext(ctx).Model(&model.PaymentOrder{}).Where("mch_no = ?", req.MchNo).
+func (p *paymentOrderRepoImpl) buildQuery(ctx context.Context, req *dto.SearchRequest) *gorm.DB {
+	query := p.db.WithContext(ctx).Model(&model.PaymentOrder{}).Where("mch_no = ?", req.MchNo).
 		Where("created_at >= ?", req.StartTime).Where("created_at <= ?", req.EndTime)
 	if req.OrderNo != "" {
 		query = query.Where("order_no = ?", req.OrderNo)
@@ -144,12 +147,12 @@ func buildQuery(ctx context.Context, req *admin.SearchRequest) *gorm.DB {
 	}
 	return query
 }
-func (p *paymentOrderRepoImpl) Count(ctx context.Context, req *admin.SearchRequest) (int64, error) {
+func (p *paymentOrderRepoImpl) Count(ctx context.Context, req *dto.SearchRequest) (int64, error) {
 	if err := req.Validate(); err != nil {
 		return 0, err
 	}
 	var m = int64(0)
-	query := buildQuery(ctx, req)
+	query := p.buildQuery(ctx, req)
 	err := query.Count(&m).Error
 	if err != nil {
 		return 0, err
@@ -164,9 +167,9 @@ func (p *paymentOrderRepoImpl) UpdateStatus(ctx context.Context, req *entity.Pay
 		OrderNo: req.OrderNo,
 		TradeNo: req.TradeNo,
 	})
-	_ = global.GVA_REDIS.Del(ctx, keys...)
-	err := global.GVA_PAY_DB.WithContext(ctx).Model(&model.PaymentOrder{}).Where("id = ? and status = ?", req.ID, old).Updates(updates).Error
-	_ = global.GVA_REDIS.Del(ctx, keys...)
+	_ = p.rdb.Del(ctx, keys...)
+	err := p.db.WithContext(ctx).Model(&model.PaymentOrder{}).Where("id = ? and status = ?", req.ID, old).Updates(updates).Error
+	_ = p.rdb.Del(ctx, keys...)
 	return err
 }
 
@@ -189,14 +192,14 @@ func (p *paymentOrderRepoImpl) GetOrderWithCache(ctx context.Context, req public
 	var m model.PaymentOrder
 	var order entity.PaymentOrder
 	key := p.genOrderKey(req)
-	cache, err := global.GVA_REDIS.Get(ctx, key).Result()
+	cache, err := p.rdb.Get(ctx, key).Result()
 	if err == nil && len(cache) > 0 {
 		_ = json.Unmarshal([]byte(cache), &order)
 		if order.ID > 0 {
 			return &order, nil
 		}
 	}
-	query := global.GVA_PAY_DB.WithContext(ctx).Where("mch_no = ? and app_no = ?", req.MchNo, req.AppNo)
+	query := p.db.WithContext(ctx).Where("mch_no = ? and app_no = ?", req.MchNo, req.AppNo)
 	if req.OrderNo != "" {
 		query = query.Where("order_no = ?", req.OrderNo)
 	}
@@ -210,7 +213,7 @@ func (p *paymentOrderRepoImpl) GetOrderWithCache(ctx context.Context, req public
 	r := buildEntity(&m)
 	bytes, _ := json.Marshal(r)
 	if len(bytes) > 0 {
-		_ = global.GVA_REDIS.Set(ctx, key, string(bytes), time.Minute*10)
+		_ = p.rdb.Set(ctx, key, string(bytes), time.Minute*10)
 	}
 	return r, nil
 }
@@ -222,19 +225,19 @@ func (p *paymentOrderRepoImpl) Save(ctx context.Context, order *entity.PaymentOr
 		OrderNo: order.OrderNo,
 		TradeNo: order.TradeNo,
 	})
-	_ = global.GVA_REDIS.Del(ctx, keys...)
+	_ = p.rdb.Del(ctx, keys...)
 	var err error
 	if order.ID > 0 {
 		m := buildModel(order)
 		// 不用更新关联关系
 		m.PaymentOrderProducts = []*model.PaymentOrderProduct{}
-		err = global.GVA_PAY_DB.WithContext(ctx).Model(&model.PaymentOrder{}).Where("id = ?", order.ID).Save(m).Error
+		err = p.db.WithContext(ctx).Model(&model.PaymentOrder{}).Where("id = ?", order.ID).Save(m).Error
 	} else {
-		err = global.GVA_PAY_DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err = p.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			return tx.Model(&model.PaymentOrder{}).Create(buildModel(order)).Error
 		})
 	}
-	global.GVA_REDIS.Del(ctx, keys...)
+	p.rdb.Del(ctx, keys...)
 	return err
 }
 
@@ -349,5 +352,5 @@ func buildModel(req *entity.PaymentOrder) *model.PaymentOrder {
 }
 
 func (p *paymentOrderRepoImpl) DeletePaymentRequestLog(ctx context.Context, lastTime time.Time) error {
-	return global.GVA_PAY_DB.WithContext(ctx).Where("created_at < ?", lastTime).Delete(&model.PaymentRequestLog{}).Error
+	return p.db.WithContext(ctx).Where("created_at < ?", lastTime).Delete(&model.PaymentRequestLog{}).Error
 }

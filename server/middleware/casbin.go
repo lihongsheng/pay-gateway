@@ -1,10 +1,10 @@
 package middleware
 
 import (
-	serviceBase "github.com/lihongsheng/go-admin/server/service/base"
-	"github.com/lihongsheng/go-admin/server/utils/casbin"
-	"github.com/lihongsheng/go-admin/server/utils/jwt"
-	"github.com/lihongsheng/go-admin/server/utils/response"
+	serviceBase "github.com/lihongsheng/pay-gateway/service/base"
+	"github.com/lihongsheng/pay-gateway/utils/casbin"
+	"github.com/lihongsheng/pay-gateway/utils/jwt"
+	"github.com/lihongsheng/pay-gateway/utils/response"
 
 	"github.com/gin-gonic/gin"
 )

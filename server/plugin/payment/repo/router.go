@@ -4,7 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/lihongsheng/pay-gateway/global"
+	"time"
+
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
@@ -12,7 +13,6 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"time"
 )
 
 type RouterRepo interface {
@@ -23,15 +23,17 @@ type RouterRepo interface {
 }
 
 type routerRepoImpl struct {
+	db  *gorm.DB
+	rdb *redis.Client
 }
 
-func NewRouterRepo() RouterRepo {
-	return &routerRepoImpl{}
+func NewRouterRepo(db *gorm.DB, rdb *redis.Client) RouterRepo {
+	return &routerRepoImpl{db: db, rdb: rdb}
 }
 
 func (r *routerRepoImpl) UpdateCache(ctx context.Context, appNo string, t time.Time) error {
 	var app []*model.RouterAccountStatistic
-	err := global.GVA_PAY_DB.WithContext(ctx).Where("app_no = ? and statistic_date = ?", appNo, t.Format("2006-01-02")).Find(&app).Error
+	err := r.db.WithContext(ctx).Where("app_no = ? and statistic_date = ?", appNo, t.Format("2006-01-02")).Find(&app).Error
 	if err != nil {
 		return err
 	}
@@ -42,13 +44,13 @@ func (r *routerRepoImpl) UpdateCache(ctx context.Context, appNo string, t time.T
 			log.WithCtx(ctx).Error("MarshalCacheUpdateRouterCache", zap.Error(err), zap.String("cacheKey", key), zap.String("appNO", appNo), zap.Time("statisticDate", t))
 			return err
 		}
-		return global.GVA_REDIS.Set(ctx, key, string(cache), enum.RouterStatisticCacheExpire).Err()
+		return r.rdb.Set(ctx, key, string(cache), enum.RouterStatisticCacheExpire).Err()
 	}
 	return nil
 }
 
 func (r *routerRepoImpl) DeleteByDate(ctx context.Context, t time.Time) error {
-	return global.GVA_PAY_DB.WithContext(ctx).Where("statistic_date < ?", t.Format("2006-01-02")).Delete(&model.RouterAccountStatistic{}).Error
+	return r.db.WithContext(ctx).Where("statistic_date < ?", t.Format("2006-01-02")).Delete(&model.RouterAccountStatistic{}).Error
 }
 
 func (r *routerRepoImpl) GetAppRouterStatisticFromCache(ctx context.Context, appNo string, t time.Time) ([]*model.RouterAccountStatistic, error) {
@@ -56,7 +58,7 @@ func (r *routerRepoImpl) GetAppRouterStatisticFromCache(ctx context.Context, app
 	key := r.getCacheKey(appNo, t)
 	lockKey := fmt.Sprintf(enum.RouterStatisticLockCacheKeys, appNo, t.Format("2006-01-02"))
 
-	cacheStr, err := global.GVA_REDIS.Get(ctx, key).Result()
+	cacheStr, err := r.rdb.Get(ctx, key).Result()
 	if err != nil && err != redis.Nil {
 		log.WithCtx(ctx).Error("GetAppRouterStatisticFromCacheError", zap.Error(err), zap.String("appNO", appNo))
 	}
@@ -69,18 +71,18 @@ func (r *routerRepoImpl) GetAppRouterStatisticFromCache(ctx context.Context, app
 			return app, nil
 		}
 	}
-	lock, err := global.GVA_REDIS.SetNX(ctx, lockKey, time.Now(), time.Second*2).Result()
+	lock, err := r.rdb.SetNX(ctx, lockKey, time.Now(), time.Second*2).Result()
 	if err != nil && err != redis.Nil {
 		log.WithCtx(ctx).Error("GetAppRouterStatisticFromCacheLockError", zap.Error(err), zap.String("appNO", appNo))
 	}
 	defer func() {
-		_ = global.GVA_REDIS.Del(ctx, lockKey)
+		_ = r.rdb.Del(ctx, lockKey)
 	}()
 	retry := 3
 	if !lock && err == nil {
 		for i := 0; i < retry; i++ {
 			time.Sleep(200 * time.Millisecond)
-			cacheStr, err = global.GVA_REDIS.Get(ctx, key).Result()
+			cacheStr, err = r.rdb.Get(ctx, key).Result()
 			if err == nil && len(cacheStr) > 0 {
 				_ = json.Unmarshal([]byte(cacheStr), &app)
 				if len(app) > 0 {
@@ -89,7 +91,7 @@ func (r *routerRepoImpl) GetAppRouterStatisticFromCache(ctx context.Context, app
 			}
 		}
 	}
-	err = global.GVA_PAY_DB.WithContext(ctx).Where("app_no = ? and statistic_date = ?", appNo, t.Format("2006-01-02")).Find(&app).Error
+	err = r.db.WithContext(ctx).Where("app_no = ? and statistic_date = ?", appNo, t.Format("2006-01-02")).Find(&app).Error
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +100,7 @@ func (r *routerRepoImpl) GetAppRouterStatisticFromCache(ctx context.Context, app
 		if err != nil {
 			log.WithCtx(ctx).Error("MarshalCacheRouterStatistic", zap.Error(err), zap.String("cacheKey", key), zap.String("appNO", appNo))
 		} else {
-			_ = global.GVA_REDIS.Set(ctx, key, string(cache), enum.RouterStatisticCacheExpire)
+			_ = r.rdb.Set(ctx, key, string(cache), enum.RouterStatisticCacheExpire)
 		}
 	}
 	return app, nil
@@ -123,7 +125,7 @@ func (r *routerRepoImpl) Save(ctx context.Context, statics *model.RouterAccountS
 		updates["user_limit"] = statics.UserLimit
 	}
 	// 使用 GORM 的 OnConflict 子句实现插入或更新，并累加 total_requests
-	result := global.GVA_PAY_DB.WithContext(ctx).Clauses(
+	result := r.db.WithContext(ctx).Clauses(
 		clause.OnConflict{
 			Columns: []clause.Column{
 				{Name: "app_no"},
@@ -133,6 +135,6 @@ func (r *routerRepoImpl) Save(ctx context.Context, statics *model.RouterAccountS
 			DoUpdates: clause.Assignments(updates),
 		},
 	).Save(statics)
-	global.GVA_REDIS.Del(ctx, r.getCacheKey(statics.AppNo, statics.StatisticDate))
+	r.rdb.Del(ctx, r.getCacheKey(statics.AppNo, statics.StatisticDate))
 	return result.Error
 }

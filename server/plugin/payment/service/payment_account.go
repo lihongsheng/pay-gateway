@@ -3,13 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
-	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/admin"
+
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
 	errors2 "github.com/lihongsheng/pay-gateway/plugin/payment/errors"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/service/dto"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
 	paySdk "github.com/lihongsheng/payment-sdk"
 	"github.com/lihongsheng/payment-sdk/driver/iface"
 	"github.com/lihongsheng/payment-sdk/enum/channel"
@@ -18,33 +17,42 @@ import (
 
 type PaymentAccountService interface {
 	// Get 后台获取，带有数据验证
-	Get(ctx context.Context, id int64) (*admin.PaymentAccountDetail, error)
+	Get(ctx context.Context, id int64) (*dto.PaymentAccountDetail, error)
 	// GetByAccountNo 后台获取，带有数据验证
 	GetByAccountNo(ctx context.Context, accNo string) (*entity.PaymentAccount, error)
 	// Save 后台获取，带有数据验证
-	Save(ctx context.Context, app *admin.PaymentAccountCreateRequest) error
+	Save(ctx context.Context, app *dto.PaymentAccountCreateRequest) error
 	// GetAccountByAppNo 后台获取，带有数据验证-
-	GetAccountByAppNo(ctx context.Context, appNo string) ([]*admin.PaymentAccountDetail, error)
+	GetAccountByAppNo(ctx context.Context, appNo string) ([]*dto.PaymentAccountDetail, error)
 	GetApplicationChannelConfig(ctx context.Context, appNo string) ([]*iface.ChannelOption, error)
-	GetPaymentProduct(channelCode string) ([]admin.PaymentMethodConfig, error)
+	GetPaymentProduct(channelCode string) ([]dto.PaymentMethodConfig, error)
 }
 
 type paymentAccountService struct {
-	svc *svc.ServiceContext
+	appRepo            repo.ApplicationRepo
+	mchRepo            repo.MchRepo
+	paymentAccountRepo repo.PaymentAccountRepo
+	db                 *gorm.DB
 }
 
-func NewPaymentAccountService(svc *svc.ServiceContext) PaymentAccountService {
+func NewPaymentAccountService(appRepo repo.ApplicationRepo, mchRepo repo.MchRepo, paymentAccountRepo repo.PaymentAccountRepo, db *gorm.DB) PaymentAccountService {
 	return &paymentAccountService{
-		svc: svc,
+		appRepo:            appRepo,
+		mchRepo:            mchRepo,
+		paymentAccountRepo: paymentAccountRepo,
+		db:                 db,
 	}
 }
 
+// DefaultPaymentAccount 包级单例
+var DefaultPaymentAccount PaymentAccountService
+
 func (s *paymentAccountService) GetApplicationAccount(ctx context.Context, appNo string, user *dto.User) ([]*model.PaymentAccount, error) {
-	application, err := s.svc.AppRepo.GetByAppNoFormCache(ctx, appNo)
+	application, err := s.appRepo.GetByAppNoFormCache(ctx, appNo)
 	if err != nil {
 		return nil, err
 	}
-	mch, err := s.svc.MchRepo.GetByMchNo(ctx, application.MchNo)
+	mch, err := s.mchRepo.GetByMchNo(ctx, application.MchNo)
 	if err != nil {
 		return nil, err
 	}
@@ -52,18 +60,18 @@ func (s *paymentAccountService) GetApplicationAccount(ctx context.Context, appNo
 	if err != nil {
 		return nil, err
 	}
-	apps, err := s.svc.PaymentAccountRepo.GetOnlyAppNO(ctx, []string{appNo})
+	apps, err := s.paymentAccountRepo.GetOnlyAppNO(ctx, []string{appNo})
 	if err != nil {
 		return nil, err
 	}
 	return apps, nil
 }
 
-func (s *paymentAccountService) Save(ctx context.Context, app *admin.PaymentAccountCreateRequest) error {
+func (s *paymentAccountService) Save(ctx context.Context, app *dto.PaymentAccountCreateRequest) error {
 	if err := app.Validate(); err != nil {
 		return err
 	}
-	application, err := s.svc.AppRepo.GetByAppNo(ctx, app.AppNo)
+	application, err := s.appRepo.GetByAppNo(ctx, app.AppNo)
 	if err != nil {
 		fmt.Println("-------------------------------------------------------1")
 		return err
@@ -77,18 +85,18 @@ func (s *paymentAccountService) Save(ctx context.Context, app *admin.PaymentAcco
 	if err != nil {
 		return err
 	}
-	_, err = s.svc.MchRepo.GetByMchNo(ctx, application.MchNo)
+	_, err = s.mchRepo.GetByMchNo(ctx, application.MchNo)
 	if err != nil {
 		return err
 	}
 	version := entity.GenAppAccountVersion()
-	err = global.GVA_PAY_DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		err = s.svc.PaymentAccountRepo.Save(ctx, app, tx)
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err = s.paymentAccountRepo.Save(ctx, app, tx)
 		if err != nil {
 			fmt.Println("-------------------------------------------------------2")
 			return err
 		}
-		return s.svc.AppRepo.UpdateApplicationAccountVersion(ctx, app.AppNo, version, tx)
+		return s.appRepo.UpdateApplicationAccountVersion(ctx, app.AppNo, version, tx)
 	})
 
 	if err != nil {
@@ -96,7 +104,7 @@ func (s *paymentAccountService) Save(ctx context.Context, app *admin.PaymentAcco
 		return err
 	}
 
-	err = s.svc.PaymentAccountRepo.RefreshAppAccountsCache(ctx, app.AppNo, version)
+	err = s.paymentAccountRepo.RefreshAppAccountsCache(ctx, app.AppNo, version)
 	if err != nil {
 		fmt.Println("-------------------------------------------------------4")
 		return err
@@ -105,32 +113,32 @@ func (s *paymentAccountService) Save(ctx context.Context, app *admin.PaymentAcco
 }
 
 func (s *paymentAccountService) GetByAccountNo(ctx context.Context, accNo string) (*entity.PaymentAccount, error) {
-	application, err := s.svc.AppRepo.GetByAppNoFormCache(ctx, accNo)
+	application, err := s.appRepo.GetByAppNoFormCache(ctx, accNo)
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.svc.MchRepo.GetByMchNo(ctx, application.MchNo)
+	_, err = s.mchRepo.GetByMchNo(ctx, application.MchNo)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.svc.PaymentAccountRepo.GetByAccountNoFormCache(ctx, accNo)
+	return s.paymentAccountRepo.GetByAccountNoFormCache(ctx, accNo)
 }
 
-func (s *paymentAccountService) GetAccountByAppNo(ctx context.Context, appNo string) ([]*admin.PaymentAccountDetail, error) {
-	application, err := s.svc.AppRepo.GetByAppNoFormCache(ctx, appNo)
+func (s *paymentAccountService) GetAccountByAppNo(ctx context.Context, appNo string) ([]*dto.PaymentAccountDetail, error) {
+	application, err := s.appRepo.GetByAppNoFormCache(ctx, appNo)
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.svc.MchRepo.GetByMchNo(ctx, application.MchNo)
+	_, err = s.mchRepo.GetByMchNo(ctx, application.MchNo)
 	if err != nil {
 		return nil, err
 	}
-	apps, err := s.svc.PaymentAccountRepo.GetByAppNo(ctx, appNo, nil)
+	apps, err := s.paymentAccountRepo.GetByAppNo(ctx, appNo, nil)
 	if err != nil {
 		return nil, err
 	}
-	var result = make([]*admin.PaymentAccountDetail, 0, len(apps))
+	var result = make([]*dto.PaymentAccountDetail, 0, len(apps))
 	for _, app := range apps {
 		tmp, err := EntityToParamResponse(app)
 		if err != nil {
@@ -141,19 +149,19 @@ func (s *paymentAccountService) GetAccountByAppNo(ctx context.Context, appNo str
 	return result, nil
 }
 
-func (s *paymentAccountService) Get(ctx context.Context, id int64) (*admin.PaymentAccountDetail, error) {
-	app, err := s.svc.PaymentAccountRepo.GetFormCache(ctx, id)
+func (s *paymentAccountService) Get(ctx context.Context, id int64) (*dto.PaymentAccountDetail, error) {
+	app, err := s.paymentAccountRepo.GetFormCache(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.svc.MchRepo.GetByMchNo(ctx, app.MchNo)
+	_, err = s.mchRepo.GetByMchNo(ctx, app.MchNo)
 	if err != nil {
 		return nil, err
 	}
 	return EntityToParamResponse(app)
 }
 
-func EntityToParamResponse(app *entity.PaymentAccount) (*admin.PaymentAccountDetail, error) {
+func EntityToParamResponse(app *entity.PaymentAccount) (*dto.PaymentAccountDetail, error) {
 	payDri, err := paySdk.GetPaymentDriver(channel.Channel(channel.Channel_value[app.Channel]))
 	if err != nil {
 		return nil, err
@@ -164,7 +172,7 @@ func EntityToParamResponse(app *entity.PaymentAccount) (*admin.PaymentAccountDet
 	}
 	products := payDri.GetSupportProduct()
 	options := pay.GetConfigOptions()
-	result := &admin.PaymentAccountDetail{
+	result := &dto.PaymentAccountDetail{
 		AppNo:               app.AppNo,
 		Channel:             app.Channel,
 		ChannelName:         options.Label,
@@ -185,8 +193,8 @@ func EntityToParamResponse(app *entity.PaymentAccount) (*admin.PaymentAccountDet
 	return result, nil
 }
 
-func BuildPaymentMethod(payDri []iface.PaymentMethod, have []entity.PaymentMethod) []admin.PaymentMethodConfig {
-	var result = make([]admin.PaymentMethodConfig, 0, len(have))
+func BuildPaymentMethod(payDri []iface.PaymentMethod, have []entity.PaymentMethod) []dto.PaymentMethodConfig {
+	var result = make([]dto.PaymentMethodConfig, 0, len(have))
 	var maps = map[string][]entity.PaymentMethod{}
 	for _, item := range have {
 		if item2, exists := maps[item.Method]; exists {
@@ -197,13 +205,13 @@ func BuildPaymentMethod(payDri []iface.PaymentMethod, have []entity.PaymentMetho
 		}
 	}
 	for _, item := range payDri {
-		r := admin.PaymentMethodConfig{
+		r := dto.PaymentMethodConfig{
 			Method:  item.Method,
 			Label:   item.Label,
-			Product: []admin.PaymentProductConfig{},
+			Product: []dto.PaymentProductConfig{},
 		}
 		for _, item2 := range item.Product {
-			tmp := admin.PaymentProductConfig{
+			tmp := dto.PaymentProductConfig{
 				Product: item2.Product,
 				Label:   item2.Label,
 			}
@@ -245,21 +253,21 @@ func (s *paymentAccountService) GetApplicationChannelConfig(ctx context.Context,
 	return result, nil
 }
 
-func (s *paymentAccountService) GetPaymentProduct(channelCode string) ([]admin.PaymentMethodConfig, error) {
+func (s *paymentAccountService) GetPaymentProduct(channelCode string) ([]dto.PaymentMethodConfig, error) {
 	payDri, err := paySdk.GetPaymentDriver(channel.Channel(channel.Channel_value[channelCode]))
 	if err != nil {
 		return nil, err
 	}
 	products := payDri.GetSupportProduct()
-	var result = make([]admin.PaymentMethodConfig, len(products))
+	var result = make([]dto.PaymentMethodConfig, len(products))
 	for i, v := range products {
-		result[i] = admin.PaymentMethodConfig{
+		result[i] = dto.PaymentMethodConfig{
 			Method:  v.Method,
 			Label:   v.Label,
-			Product: make([]admin.PaymentProductConfig, 0, len(v.Product)),
+			Product: make([]dto.PaymentProductConfig, 0, len(v.Product)),
 		}
 		for _, v2 := range v.Product {
-			result[i].Product = append(result[i].Product, admin.PaymentProductConfig{
+			result[i].Product = append(result[i].Product, dto.PaymentProductConfig{
 				Product: v2.Product,
 				Label:   v2.Label,
 			})

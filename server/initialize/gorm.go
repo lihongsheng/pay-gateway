@@ -3,10 +3,10 @@ package initialize
 import (
 	"fmt"
 
-	"github.com/lihongsheng/go-admin/server/core/installer"
-	"github.com/lihongsheng/go-admin/server/global"
-	applog "github.com/lihongsheng/go-admin/server/log"
-	"github.com/lihongsheng/go-admin/server/model/system"
+	"github.com/lihongsheng/pay-gateway/core/installer"
+	"github.com/lihongsheng/pay-gateway/global"
+	applog "github.com/lihongsheng/pay-gateway/log"
+	"github.com/lihongsheng/pay-gateway/model/system"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

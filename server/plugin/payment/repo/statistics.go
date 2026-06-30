@@ -3,12 +3,11 @@ package repo
 import (
 	"context"
 	"errors"
-	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/dao"
+	"time"
+
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"time"
 )
 
 type Statistics interface {
@@ -18,10 +17,11 @@ type Statistics interface {
 }
 
 type statistics struct {
+	db *gorm.DB
 }
 
-func NewStatistics() Statistics {
-	return &statistics{}
+func NewStatistics(db *gorm.DB) Statistics {
+	return &statistics{db: db}
 }
 
 func (s *statistics) Save(ctx context.Context, statics *model.Statistic, tx *gorm.DB) error {
@@ -50,16 +50,19 @@ func (s *statistics) Save(ctx context.Context, statics *model.Statistic, tx *gor
 }
 
 func (s *statistics) Get(ctx context.Context, mchNo, appNo, statisticTag, statisticKey string, t time.Time) (*model.Statistic, error) {
-	return dao.Statistic.WithContext(ctx).Where(dao.Statistic.MchNo.Eq(mchNo),
-		dao.Statistic.AppNo.Eq(appNo),
-		dao.Statistic.StatisticTag.Eq(statisticTag),
-		dao.Statistic.StatisticKey.Eq(statisticKey),
-		dao.Statistic.StatisticDate.Eq(t)).First()
+	var m model.Statistic
+	err := s.db.WithContext(ctx).
+		Where("mch_no = ? AND app_no = ? AND statistic_tag = ? AND statistic_key = ? AND statistic_date = ?", mchNo, appNo, statisticTag, statisticKey, t).
+		First(&m).Error
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
 }
 
 func (s *statistics) CountGroupMch(ctx context.Context, mchNo, appNo, statisticTag, statisticKey string, start, end time.Time) (*model.Statistic, error) {
 	var statics *model.Statistic
-	return statics, global.GVA_PAY_DB.WithContext(ctx).
+	return statics, s.db.WithContext(ctx).
 		Model(&model.Statistic{}).
 		Select("app_no", "mch_no", "statistic_date", "statistic_tag", "statistic_key",
 			"SUM(statistic) as statistic").

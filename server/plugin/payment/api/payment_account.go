@@ -1,47 +1,45 @@
 package api
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/model/common/response"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/admin"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/service/enter"
-	"go.uber.org/zap"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
+	servicePay "github.com/lihongsheng/pay-gateway/plugin/payment/service"
+	"github.com/lihongsheng/pay-gateway/utils/response"
 )
 
-type AccountApi struct {
-}
-
-// Get
+// GetPaymentAccount
 // @Tags      AccountApiAdmin
 // @Summary   获取应用支付渠道配置信息
 // @Security  ApiKeyAuth
 // @accept  application/json
 // @Produce application/json
 // @Param id query int true "用id查询商户应用信息"
-// @Success 200 {object} response.Response{data=admin.PaymentAccountDetail,msg=string} "查询成功"
+// @Success 200 {object} response.Body{data=dto.PaymentAccountDetail,msg=string} "查询成功"
 // @Router /private/v1/payment_account [get]
-func (a *AccountApi) Get(c *gin.Context) {
+func GetPaymentAccount(c *gin.Context) {
 	ID := c.Query("id")
 	id, err := strconv.Atoi(ID)
 	if err != nil {
-		global.GVA_LOG.Error("参数错误!", zap.Error(err))
-		response.FailWithMessage("参数错误", c)
+		zap.L().Error("参数错误!", zap.Error(err))
+		response.Fail(c, "参数错误")
 		return
 	}
 	user := GetUserInfo(c)
-	info, err := enter.ServiceApiApp.PaymentAccount.Get(c.Request.Context(), int64(id))
+	info, err := servicePay.DefaultPaymentAccount.Get(c.Request.Context(), int64(id))
 	if err := user.ISHaveMchID(info.MchNo); err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
 	if err != nil {
-		global.GVA_LOG.Error("查询失败!", zap.Error(err))
-		response.FailWithMessage("查询失败", c)
+		zap.L().Error("查询失败!", zap.Error(err))
+		response.Fail(c, "查询失败")
 		return
 	}
-	response.OkWithData(info, c)
+	response.OK(c, info)
 }
 
 // Save
@@ -50,27 +48,27 @@ func (a *AccountApi) Get(c *gin.Context) {
 // @Security  ApiKeyAuth
 // @accept  application/json
 // @Produce application/json
-// @Param data query admin.PaymentAccountCreateRequest true "保存商户信息"
-// @Success 200 {object} response.Response{data=,msg=string} "查询成功"
+// @Param data query dto.PaymentAccountCreateRequest true "保存商户信息"
+// @Success 200 {object} response.Body{data=,msg=string} "查询成功"
 // @Router /private/v1/payment_account [post]
-func (a *AccountApi) Save(c *gin.Context) {
-	var req admin.PaymentAccountCreateRequest
+func SavePaymentAccount(c *gin.Context) {
+	var req dto.PaymentAccountCreateRequest
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.Fail(c, err.Error())
 		return
 	}
 	user := GetUserInfo(c)
-	if user.UserType.ISMch() {
+	if user.ISMch() {
 		req.MchNo = user.HaveMchNo
 	}
-	err = enter.ServiceApiApp.PaymentAccount.Save(c.Request.Context(), &req)
+	err = servicePay.DefaultPaymentAccount.Save(c.Request.Context(), &req)
 	if err != nil {
-		global.GVA_LOG.Error("保存失败!", zap.Error(err), zap.Any("data", req))
-		response.FailWithMessage("保存失败"+err.Error(), c)
+		zap.L().Error("保存失败!", zap.Error(err), zap.Any("data", req))
+		response.Fail(c, "保存失败"+err.Error())
 		return
 	}
-	response.OkWithMessage("保存成功", c)
+	response.OKMsg(c, "保存成功")
 }
 
 // AccountList
@@ -80,29 +78,29 @@ func (a *AccountApi) Save(c *gin.Context) {
 // @accept  application/json
 // @Produce application/json
 // @Param id query int true "用id查询商户应用信息"
-// @Success 200 {object} response.Response{data=[]model.PaymentAccount,msg=string} "查询成功"
+// @Success 200 {object} response.Body{data=[]model.PaymentAccount,msg=string} "查询成功"
 // @Router /private/v1/payment_account/list [get]
-func (a *AccountApi) AccountList(c *gin.Context) {
+func AccountList(c *gin.Context) {
 	appNO := c.Query("app_no")
 	if appNO == "" {
-		response.FailWithMessage("参数错误", c)
+		response.Fail(c, "参数错误")
 		return
 	}
 	user := GetUserInfo(c)
 
-	info, err := enter.ServiceApiApp.PaymentAccount.GetAccountByAppNo(c.Request.Context(), appNO)
+	info, err := servicePay.DefaultPaymentAccount.GetAccountByAppNo(c.Request.Context(), appNO)
 	if err != nil {
-		global.GVA_LOG.Error("查询失败!", zap.Error(err))
-		response.FailWithMessage("查询失败", c)
+		zap.L().Error("查询失败!", zap.Error(err))
+		response.Fail(c, "查询失败")
 		return
 	}
 	for _, v := range info {
 		if err := user.ISHaveMchID(v.MchNo); err != nil {
-			response.FailWithMessage(err.Error(), c)
+			response.Fail(c, err.Error())
 			return
 		}
 	}
-	response.OkWithData(info, c)
+	response.OK(c, info)
 }
 
 // GetChannelConfig
@@ -112,21 +110,21 @@ func (a *AccountApi) AccountList(c *gin.Context) {
 // @accept  application/json
 // @Produce application/json
 // @Param id query int true "用id查询商户应用信息"
-// @Success 200 {object} response.Response{data=map[string]*params2.Option,msg=string} "查询成功"
+// @Success 200 {object} response.Body{data=map[string]*params2.Option,msg=string} "查询成功"
 // @Router /private/v1/payment_account/channel/config [get]
-func (a *AccountApi) GetChannelConfig(c *gin.Context) {
+func GetChannelConfig(c *gin.Context) {
 	appNO := c.Query("app_no")
 	if appNO == "" {
-		response.FailWithMessage("参数错误", c)
+		response.Fail(c, "参数错误")
 		return
 	}
-	info, err := enter.ServiceApiApp.PaymentAccount.GetApplicationChannelConfig(c.Request.Context(), appNO)
+	info, err := servicePay.DefaultPaymentAccount.GetApplicationChannelConfig(c.Request.Context(), appNO)
 	if err != nil {
-		global.GVA_LOG.Error("查询失败!", zap.Error(err))
-		response.FailWithMessage("查询失败", c)
+		zap.L().Error("查询失败!", zap.Error(err))
+		response.Fail(c, "查询失败")
 		return
 	}
-	response.OkWithData(info, c)
+	response.OK(c, info)
 }
 
 // GetChannelPaymentMethod
@@ -136,21 +134,21 @@ func (a *AccountApi) GetChannelConfig(c *gin.Context) {
 // @accept  application/json
 // @Produce application/json
 // @Param id query int true "用id查询商户应用信息"
-// @Success 200 {object} response.Response{data=map[string]*params2.Option,msg=string} "查询成功"
+// @Success 200 {object} response.Body{data=map[string]*params2.Option,msg=string} "查询成功"
 // @Router /private/v1/payment_account/channel/payment [get]
-func (a *AccountApi) GetChannelPaymentMethod(c *gin.Context) {
+func GetChannelPaymentMethod(c *gin.Context) {
 	channel := c.Query("channel")
 	if channel == "" {
-		response.FailWithMessage("参数错误", c)
+		response.Fail(c, "参数错误")
 		return
 	}
-	info, err := enter.ServiceApiApp.PaymentAccount.GetPaymentProduct(channel)
+	info, err := servicePay.DefaultPaymentAccount.GetPaymentProduct(channel)
 	if err != nil {
-		global.GVA_LOG.Error("查询失败!", zap.Error(err))
-		response.FailWithMessage("查询失败", c)
+		zap.L().Error("查询失败!", zap.Error(err))
+		response.Fail(c, "查询失败")
 		return
 	}
-	response.OkWithData(info, c)
+	response.OK(c, info)
 }
 
 // GetTestQrCode
@@ -161,20 +159,20 @@ func (a *AccountApi) GetChannelPaymentMethod(c *gin.Context) {
 // @Produce application/json
 // @Param app_no query string true "应用编号"
 // @Param account_no query int true "支付编号"
-// @Success 200 {object} response.Response{data=map[string]*params2.Option,msg=string} "查询成功"
+// @Success 200 {object} response.Body{data=map[string]*params2.Option,msg=string} "查询成功"
 // @Router /private/v1/payment_account/channel/payment [get]
-func (a *AccountApi) GetTestQrCode(c *gin.Context) {
+func GetTestQrCode(c *gin.Context) {
 	appNO := c.Query("app_no")
 	accNO := c.Query("account_no")
 	if appNO == "" || accNO == "" {
-		response.FailWithMessage("参数错误", c)
+		response.Fail(c, "参数错误")
 		return
 	}
-	u, order, err := enter.ServiceApiApp.Aggregate.GenTestQrCode(c.Request.Context(), appNO, accNO)
+	u, order, err := servicePay.DefaultAggregate.GenTestQrCode(c.Request.Context(), appNO, accNO)
 	if err != nil {
-		global.GVA_LOG.Error("GetQrCode", zap.Error(err))
-		response.FailWithMessage("获取二维码失败："+err.Error(), c)
+		zap.L().Error("GetQrCode", zap.Error(err))
+		response.Fail(c, "获取二维码失败："+err.Error())
 		return
 	}
-	response.OkWithData(gin.H{"qr_link": u, "order_no": order}, c)
+	response.OK(c, gin.H{"qr_link": u, "order_no": order})
 }

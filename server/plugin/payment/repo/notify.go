@@ -2,10 +2,11 @@ package repo
 
 import (
 	"context"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/dao"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
 	"time"
+
+	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
+	"gorm.io/gorm"
 )
 
 type NotifyRepo interface {
@@ -18,63 +19,76 @@ type NotifyRepo interface {
 	GetById(ctx context.Context, id int64) (*model.NotifyRecord, error)
 	CountRetry(ctx context.Context, start time.Time, end time.Time, notifyType enum.NotifyType) (int64, error)
 }
-type notifyRepoImpl struct{}
+type notifyRepoImpl struct {
+	db *gorm.DB
+}
 
-func NewNotifyRepo() NotifyRepo {
-	return &notifyRepoImpl{}
+func NewNotifyRepo(db *gorm.DB) NotifyRepo {
+	return &notifyRepoImpl{db: db}
 }
 
 func (n *notifyRepoImpl) CountRetry(ctx context.Context, start time.Time, end time.Time, notifyType enum.NotifyType) (int64, error) {
-	return dao.NotifyRecord.WithContext(ctx).Where(dao.NotifyRecord.LastNotifyTime.Between(start, end), dao.NotifyRecord.NotifyStatus.Eq(int64(enum.NotifyStatus_Init)), dao.NotifyRecord.NotifyType.Eq(int64(notifyType))).Count()
+	var count int64
+	err := n.db.WithContext(ctx).Model(&model.NotifyRecord{}).
+		Where("last_notify_time BETWEEN ? AND ?", start, end).
+		Where("notify_status = ?", int64(enum.NotifyStatus_Init)).
+		Where("notify_type = ?", int64(notifyType)).
+		Count(&count).Error
+	return count, err
 }
 
 func (n *notifyRepoImpl) GetById(ctx context.Context, id int64) (*model.NotifyRecord, error) {
-	return dao.NotifyRecord.WithContext(ctx).Where(dao.NotifyRecord.ID.Eq(id)).First()
+	var m model.NotifyRecord
+	err := n.db.WithContext(ctx).Where("id = ?", id).First(&m).Error
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
 }
 
 func (n *notifyRepoImpl) GetRetry(ctx context.Context, start time.Time, end time.Time, lastId int64, limit int, notifyType enum.NotifyType) ([]*model.NotifyRecord, error) {
-	return dao.NotifyRecord.WithContext(ctx).
-		Where(dao.NotifyRecord.LastNotifyTime.Between(start, end), dao.NotifyRecord.ID.Gt(lastId),
-			dao.NotifyRecord.NotifyStatus.Eq(int64(enum.NotifyStatus_Init)), dao.NotifyRecord.NotifyType.Eq(int64(notifyType))).
-		Order(dao.NotifyRecord.LastNotifyTime.Asc(), dao.NotifyRecord.ID.Asc()).Limit(limit).Find()
+	var m []*model.NotifyRecord
+	err := n.db.WithContext(ctx).
+		Where("last_notify_time BETWEEN ? AND ?", start, end).
+		Where("id > ?", lastId).
+		Where("notify_status = ?", int64(enum.NotifyStatus_Init)).
+		Where("notify_type = ?", int64(notifyType)).
+		Order("last_notify_time ASC, id ASC").Limit(limit).Find(&m).Error
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 func (n *notifyRepoImpl) Get(ctx context.Context, mchNO, appNo string, notifyType enum.NotifyType, outNo string) (*model.NotifyRecord, error) {
-	return dao.NotifyRecord.WithContext(ctx).Where(dao.NotifyRecord.MchNo.Eq(mchNO), dao.NotifyRecord.AppNo.Eq(appNo), dao.NotifyRecord.NotifyType.Eq(int64(notifyType)), dao.NotifyRecord.OutNo.Eq(outNo)).First()
+	var m model.NotifyRecord
+	err := n.db.WithContext(ctx).
+		Where("mch_no = ? AND app_no = ? AND notify_type = ? AND out_no = ?", mchNO, appNo, int64(notifyType), outNo).
+		First(&m).Error
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
 }
 
 func (n *notifyRepoImpl) Save(ctx context.Context, record *model.NotifyRecord) error {
-	return dao.NotifyRecord.WithContext(ctx).Create(record)
+	return n.db.WithContext(ctx).Create(record).Error
 }
 
 func (n *notifyRepoImpl) UpdateStatus(ctx context.Context, id int64, status enum.NotifyStatus, result string) error {
-	_, err := dao.NotifyRecord.WithContext(ctx).Where(dao.NotifyRecord.ID.Eq(id)).Updates(map[string]interface{}{
+	return n.db.WithContext(ctx).Model(&model.NotifyRecord{}).Where("id = ?", id).Updates(map[string]interface{}{
 		"notify_status": status,
 		"res_result":    result,
-	})
-	return err
+	}).Error
 }
 
-//func (n *notifyRepoImpl) ConfirmSuccess(ctx context.Context, id int64) error {
-//	_, err := dao.NotifyRecord.WithContext(ctx).Where(dao.NotifyRecord.ID.Eq(id)).Updates(map[string]interface{}{
-//		"status": enum.NotifyStatus_Success,
-//	})
-//	return err
-//}
-
 func (n *notifyRepoImpl) Retry(ctx context.Context, notifyID int64, nextTime time.Time) error {
-	_, err := dao.NotifyRecord.WithContext(ctx).Where(dao.NotifyRecord.ID.Eq(notifyID)).Updates(map[string]interface{}{
-		"notify_count":     dao.NotifyRecord.NotifyCount.Add(1),
+	return n.db.WithContext(ctx).Model(&model.NotifyRecord{}).Where("id = ?", notifyID).Updates(map[string]interface{}{
+		"notify_count":     gorm.Expr("notify_count + 1"),
 		"last_notify_time": nextTime,
-	})
-	return err
+	}).Error
 }
 
 func (n *notifyRepoImpl) Delete(ctx context.Context, lastTime time.Time) error {
-	//record, err := dao.NotifyRecord.WithContext(ctx).Where(dao.NotifyRecord.CreatedAt.Lte(lastTime)).Order(dao.NotifyRecord.ID.Desc()).First()
-	//if err != nil {
-	//	return err
-	//}
-	_, err := dao.NotifyRecord.WithContext(ctx).Where(dao.NotifyRecord.CreatedAt.Lte(lastTime)).Delete()
-	return err
+	return n.db.WithContext(ctx).Where("created_at <= ?", lastTime).Delete(&model.NotifyRecord{}).Error
 }

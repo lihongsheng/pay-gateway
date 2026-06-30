@@ -1,8 +1,9 @@
 package domain
 
-import "github.com/lihongsheng/pay-gateway/plugin/payment/svc"
-
-var Service = NewServiceGroup(svc.ServiceContextApp)
+import (
+	"github.com/lihongsheng/pay-gateway/plugin/payment/infrastructure"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
+)
 
 type ServiceGroup struct {
 	PaymentService
@@ -10,10 +11,19 @@ type ServiceGroup struct {
 	RefundService
 }
 
-func NewServiceGroup(svc *svc.ServiceContext) *ServiceGroup {
+func NewServiceGroup(
+	paymentOrderRepo repo.PaymentOrderRepo,
+	refundRepo repo.RefundRepo,
+	paymentAccountRepo repo.PaymentAccountRepo,
+	routerRepo repo.RouterRepo,
+	event infrastructure.Event,
+) *ServiceGroup {
 	return &ServiceGroup{
-		PaymentService: NewPaymentService(svc),
-		Router:         NewRouterService(svc),
-		RefundService:  NewRefundService(svc),
+		PaymentService: NewPaymentService(paymentOrderRepo, paymentAccountRepo, event),
+		Router:         NewRouterService(paymentAccountRepo, routerRepo),
+		RefundService:  NewRefundService(refundRepo, paymentOrderRepo, paymentAccountRepo, event),
 	}
 }
+
+// DefaultServiceGroup 包级单例
+var Service *ServiceGroup

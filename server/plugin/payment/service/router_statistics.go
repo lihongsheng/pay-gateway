@@ -2,11 +2,12 @@ package service
 
 import (
 	"context"
+
 	event2 "github.com/lihongsheng/pay-gateway/plugin/payment/domain/event"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
 	"github.com/lihongsheng/payment-sdk/enum/payment"
 	"go.uber.org/zap"
 )
@@ -17,14 +18,17 @@ type RouterStatisticsService interface {
 }
 
 type routerStatisticsService struct {
-	svc *svc.ServiceContext
+	routerRepo repo.RouterRepo
 }
 
-func NewRouterStatisticsService(svc *svc.ServiceContext) RouterStatisticsService {
+func NewRouterStatisticsService(routerRepo repo.RouterRepo) RouterStatisticsService {
 	return &routerStatisticsService{
-		svc: svc,
+		routerRepo: routerRepo,
 	}
 }
+
+// DefaultRouterStatistics 包级单例
+var DefaultRouterStatistics RouterStatisticsService
 
 // HandleUserLimitEvent 处理用户登录限制事件
 // 微信可能会限制获取用户openid导致支付失败
@@ -38,9 +42,9 @@ func (s *routerStatisticsService) HandleUserLimitEvent(ctx context.Context, even
 		StatisticDate: event.CreateAt,
 		UserLimit:     1,
 	}
-	err := s.svc.RouterRepo.Save(ctx, statics)
+	err := s.routerRepo.Save(ctx, statics)
 	if err != nil {
-		cacheErr := s.svc.RouterRepo.UpdateCache(ctx, event.AppNo, event.CreateAt)
+		cacheErr := s.routerRepo.UpdateCache(ctx, event.AppNo, event.CreateAt)
 		if cacheErr != nil {
 			log.WithCtx(ctx).Error("更新路由统计缓存失败", zap.Error(cacheErr), zap.String("appNO", event.AppNo), zap.String("date", event.CreateAt.Format("2006-01-02")))
 		}
@@ -49,18 +53,15 @@ func (s *routerStatisticsService) HandleUserLimitEvent(ctx context.Context, even
 }
 
 // HandlePaymentEvent 消费支付事件数据，统计路由数据，用于自动切换支付账户。
-// @param ctx
-// @param event
-// @return error
 func (s *routerStatisticsService) HandlePaymentEvent(ctx context.Context, event *event2.PaymentOrderStatusEvent) error {
 	if !(event.NewStatus == payment.Status_Pending || event.NewStatus == payment.Status_Success ||
 		event.NewStatus == payment.Status_Failed || event.NewStatus == payment.Status_TempFailed) {
 		return nil
 	}
 	statics := s.buildStatistic(event)
-	err := s.svc.RouterRepo.Save(ctx, statics)
+	err := s.routerRepo.Save(ctx, statics)
 	if err != nil {
-		cacheErr := s.svc.RouterRepo.UpdateCache(ctx, event.AppNo, event.CreateAt)
+		cacheErr := s.routerRepo.UpdateCache(ctx, event.AppNo, event.CreateAt)
 		if cacheErr != nil {
 			log.WithCtx(ctx).Error("更新路由统计缓存失败", zap.Error(cacheErr), zap.String("appNO", event.AppNo), zap.String("date", event.CreateAt.Format("2006-01-02")))
 		}

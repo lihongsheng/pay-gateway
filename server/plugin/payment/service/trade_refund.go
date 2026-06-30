@@ -4,13 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/admin"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
+	"github.com/lihongsheng/pay-gateway/dto/system"
+	system3 "github.com/lihongsheng/pay-gateway/model/system"
+	system2 "github.com/lihongsheng/pay-gateway/repo/system"
+
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain"
+	admin "github.com/lihongsheng/pay-gateway/plugin/payment/dto"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/utils"
 	"github.com/lihongsheng/payment-sdk/enum/payment"
 	"github.com/lihongsheng/payment-sdk/enum/refund"
@@ -26,19 +30,30 @@ type TradeRefundService interface {
 }
 
 type tradeRefundService struct {
-	svc    *svc.ServiceContext
-	domain *domain.ServiceGroup
+	paymentOrderRepo   repo.PaymentOrderRepo
+	refundRepo         repo.RefundRepo
+	appRepo            repo.ApplicationRepo
+	mchRepo            system2.MchRepo
+	paymentAccountRepo repo.PaymentAccountRepo
+	domainRefund       domain.RefundService
 }
 
-func NewTradeRefundService(svc *svc.ServiceContext, domain *domain.ServiceGroup) TradeRefundService {
+func NewTradeRefundService(paymentOrderRepo repo.PaymentOrderRepo, refundRepo repo.RefundRepo, appRepo repo.ApplicationRepo, mchRepo system2.MchRepo, paymentAccountRepo repo.PaymentAccountRepo, domainRefund domain.RefundService) TradeRefundService {
 	return &tradeRefundService{
-		svc:    svc,
-		domain: domain,
+		paymentOrderRepo:   paymentOrderRepo,
+		refundRepo:         refundRepo,
+		appRepo:            appRepo,
+		mchRepo:            mchRepo,
+		paymentAccountRepo: paymentAccountRepo,
+		domainRefund:       domainRefund,
 	}
 }
 
+// DefaultTradeRefund 包级单例
+var DefaultTradeRefund TradeRefundService
+
 func (t *tradeRefundService) AvailableRefundAmount(ctx context.Context, mchNO string, appNO string, orderNo string) (int64, error) {
-	order, err := t.svc.PaymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
+	order, err := t.paymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
 		OrderNo: orderNo,
 		AppNo:   appNO,
 		MchNo:   mchNO,
@@ -49,7 +64,7 @@ func (t *tradeRefundService) AvailableRefundAmount(ctx context.Context, mchNO st
 	if !(order.Status == payment.Status_Success || order.Status == payment.Status_Refund) {
 		return 0, errors.New("此订单不可退款")
 	}
-	amount, err := t.svc.RefundRepo.CountAmount(ctx, mchNO, appNO, orderNo, []refund.Status{refund.Status_Success})
+	amount, err := t.refundRepo.CountAmount(ctx, mchNO, appNO, orderNo, []refund.Status{refund.Status_Success})
 	if err != nil {
 		return 0, err
 	}
@@ -60,7 +75,7 @@ func (t *tradeRefundService) Refund(ctx context.Context, req *admin.Refund) (*pu
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	appInfo, err := t.svc.AppRepo.GetByAppNoFormCache(ctx, req.AppNo)
+	appInfo, err := t.appRepo.GetByAppNoFormCache(ctx, req.AppNo)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +96,7 @@ func (t *tradeRefundService) Refund(ctx context.Context, req *admin.Refund) (*pu
 		MchNo:          req.MchNo,
 		RefundFrom:     enum.RefundFrom_ADMIN,
 	}
-	resp, err := t.domain.RefundService.Refund(ctx, &refundReq, appInfo)
+	resp, err := t.domainRefund.Refund(ctx, &refundReq, appInfo)
 	if err != nil {
 		log.WithCtx(ctx).Error("退款失败: ", zap.Error(err), zap.Any("refundReq", refundReq))
 		return nil, err
@@ -96,7 +111,7 @@ func (t *tradeRefundService) Detail(ctx context.Context, mchNO string, appNO str
 	if mchNO == "" || refundTradeNo == "" {
 		return nil, errors.New("参数错误")
 	}
-	m, err := t.svc.RefundRepo.GetRefund(ctx, mchNO, appNO, refundTradeNo)
+	m, err := t.refundRepo.GetRefund(ctx, mchNO, appNO, refundTradeNo)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +155,7 @@ func (t *tradeRefundService) ModelToParamResponse(ctx context.Context, req []*mo
 	return res, nil
 }
 
-func (t *tradeRefundService) getLink(ctx context.Context, req []*model.RefundOrder) (mch map[string]*model.Merchant, app map[string]*model.Application, paymentAccount map[string]*model.PaymentAccount, err error) {
+func (t *tradeRefundService) getLink(ctx context.Context, req []*model.RefundOrder) (mch map[string]*system3.Merchant, app map[string]*model.Application, paymentAccount map[string]*model.PaymentAccount, err error) {
 	var mchNos = []string{}
 	var existMchNos = map[string]string{}
 	var appNos = []string{}
@@ -161,18 +176,18 @@ func (t *tradeRefundService) getLink(ctx context.Context, req []*model.RefundOrd
 			existPaymentAccountNos[v.PaymentAccountNo] = v.PaymentAccountNo
 		}
 	}
-	mchs, err := t.svc.MchRepo.Search(ctx, admin.MchQueryRequest{MchNos: mchNos, Page: 1, PageSize: len(mchNos)})
+	mocha, err := t.mchRepo.Search(ctx, system.MchQueryRequest{MchNos: mchNos, Page: 1, PageSize: len(mchNos)})
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	mch = map[string]*model.Merchant{}
-	if len(mchs) == 0 {
+	mch = map[string]*system3.Merchant{}
+	if len(mocha) == 0 {
 		return nil, nil, nil, errors.New("商户不存在")
 	}
-	for _, v := range mchs {
+	for _, v := range mocha {
 		mch[v.MchNo] = v
 	}
-	apps, err := t.svc.AppRepo.Search(ctx, &admin.ApplicationQueryRequest{AppNos: appNos, Page: 1, PageSize: len(appNos)})
+	apps, err := t.appRepo.Search(ctx, &admin.ApplicationQueryRequest{AppNos: appNos, Page: 1, PageSize: len(appNos)})
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -183,7 +198,7 @@ func (t *tradeRefundService) getLink(ctx context.Context, req []*model.RefundOrd
 	for _, v := range apps {
 		app[v.AppNo] = v
 	}
-	paymentAccounts, err := t.svc.PaymentAccountRepo.GetOnlyAccountNo(ctx, paymentAccountNos)
+	paymentAccounts, err := t.paymentAccountRepo.GetOnlyAccountNo(ctx, paymentAccountNos)
 	paymentAccount = map[string]*model.PaymentAccount{}
 	if err != nil {
 		return nil, nil, nil, err
@@ -201,12 +216,9 @@ func (t *tradeRefundService) Search(ctx context.Context, req *admin.RefundSearch
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	m, err := t.svc.RefundRepo.Search(ctx, req)
+	m, err := t.refundRepo.Search(ctx, req)
 	if err != nil {
 		return nil, err
-	}
-	if len(m) == 0 {
-		return nil, nil
 	}
 	if len(m) == 0 {
 		return nil, nil
@@ -218,5 +230,5 @@ func (t *tradeRefundService) Count(ctx context.Context, req *admin.RefundSearchR
 	if err := req.Validate(); err != nil {
 		return 0, err
 	}
-	return t.svc.RefundRepo.Count(ctx, req)
+	return t.refundRepo.Count(ctx, req)
 }

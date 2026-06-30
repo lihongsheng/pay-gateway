@@ -3,48 +3,73 @@ package service
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/admin"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/api/public"
+	dtoSys "github.com/lihongsheng/pay-gateway/dto/system"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	event2 "github.com/lihongsheng/pay-gateway/plugin/payment/domain/event"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
 	"github.com/lihongsheng/payment-sdk/enum/payment"
 	"github.com/lihongsheng/payment-sdk/enum/refund"
 	"gorm.io/gorm"
-	"time"
 )
 
 type TradeStatisticsService interface {
 	HandlePaymentEvent(ctx context.Context, event *event2.PaymentOrderStatusEvent, tag string) error
 	HandleRefundEvent(ctx context.Context, event *event2.RefundOrderStatusEvent, tag string) error
-	CountGroup(ctx context.Context, start, end time.Time) ([]*admin.TradeStatistic, error)
-	CountGroupMch(ctx context.Context, mchNo string, start, end time.Time) ([]*admin.TradeStatistic, error)
-	CountGroupMchApp(ctx context.Context, mchNo string, appNo string, start, end time.Time) ([]*admin.TradeStatistic, error)
-	CountGroupMchAppAccount(ctx context.Context, mchNo string, appNo string, start, end time.Time) ([]*admin.TradeStatistic, error)
-	SearchDashboard(ctx context.Context, req *admin.MchTradeStatisticRequest) ([]*admin.TradeStatistic, error)
-	Count(ctx context.Context, req *admin.MchTradeStatisticRequest) (int64, error)
+	CountGroup(ctx context.Context, start, end time.Time) ([]*dto.TradeStatistic, error)
+	CountGroupMch(ctx context.Context, mchNo string, start, end time.Time) ([]*dto.TradeStatistic, error)
+	CountGroupMchApp(ctx context.Context, mchNo string, appNo string, start, end time.Time) ([]*dto.TradeStatistic, error)
+	CountGroupMchAppAccount(ctx context.Context, mchNo string, appNo string, start, end time.Time) ([]*dto.TradeStatistic, error)
+	SearchDashboard(ctx context.Context, req *dto.MchTradeStatisticRequest) ([]*dto.TradeStatistic, error)
+	Count(ctx context.Context, req *dto.MchTradeStatisticRequest) (int64, error)
 	AllOrderStatistics(ctx context.Context, event *event2.PaymentOrderStatusEvent, tag string) error
 	MchAllOrderStatistics(ctx context.Context, event *event2.PaymentOrderStatusEvent, tag string) error
 	GetAllRequestOrder(ctx context.Context, mchNo string, start, end time.Time) (int64, error)
 }
 type tradeStatisticsService struct {
-	svc *svc.ServiceContext
+	mchRepo            repo.MchRepo
+	appRepo            repo.ApplicationRepo
+	paymentAccountRepo repo.PaymentAccountRepo
+	paymentOrderRepo   repo.PaymentOrderRepo
+	tradeStatisticsRepo repo.TradeStaticsRepo
+	eventRecordRepo    repo.EventRecordRepo
+	statisticsRepo     repo.Statistics
 }
 
-func NewTradeStatisticsService(svc *svc.ServiceContext) TradeStatisticsService {
+func NewTradeStatisticsService(
+	mchRepo repo.MchRepo,
+	appRepo repo.ApplicationRepo,
+	paymentAccountRepo repo.PaymentAccountRepo,
+	paymentOrderRepo repo.PaymentOrderRepo,
+	tradeStatisticsRepo repo.TradeStaticsRepo,
+	eventRecordRepo repo.EventRecordRepo,
+	statisticsRepo repo.Statistics,
+) TradeStatisticsService {
 	return &tradeStatisticsService{
-		svc: svc,
+		mchRepo:            mchRepo,
+		appRepo:            appRepo,
+		paymentAccountRepo: paymentAccountRepo,
+		paymentOrderRepo:   paymentOrderRepo,
+		tradeStatisticsRepo: tradeStatisticsRepo,
+		eventRecordRepo:    eventRecordRepo,
+		statisticsRepo:     statisticsRepo,
 	}
 }
+
+// DefaultTradeStatistics 包级单例
+var DefaultTradeStatistics TradeStatisticsService
 
 func (t *tradeStatisticsService) GetAllRequestOrder(ctx context.Context, mchNo string, start, end time.Time) (int64, error) {
 	mch := enum.StatisticsAll
 	if mchNo != "" {
 		mch = mchNo
 	}
-	totalRequest, err := t.svc.StatisticsRepo.CountGroupMch(ctx, mch, enum.StatisticsAll, enum.StatisticsTag, enum.StatisticsKey, start, end)
+	totalRequest, err := t.statisticsRepo.CountGroupMch(ctx, mch, enum.StatisticsAll, enum.StatisticsTag, enum.StatisticsKey, start, end)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return 0, err
 	}
@@ -62,11 +87,11 @@ func (t *tradeStatisticsService) AllOrderStatistics(ctx context.Context, event *
 	if statics == nil {
 		return nil
 	}
-	exits, _ := t.svc.EventRecordRepo.Get(ctx, event.EventId, event.EventType, tag)
+	exits, _ := t.eventRecordRepo.Get(ctx, event.EventId, event.EventType, tag)
 	if exits != nil {
 		return nil
 	}
-	err := global.GVA_PAY_DB.Transaction(func(tx *gorm.DB) error {
+	err := global.DB.Transaction(func(tx *gorm.DB) error {
 		er := &model.EventProcessRecord{
 			EventID:     event.EventId,
 			EventType:   event.EventType,
@@ -75,10 +100,10 @@ func (t *tradeStatisticsService) AllOrderStatistics(ctx context.Context, event *
 			Consumer:    tag,
 		}
 		// 唯一键防重复统计
-		if err := t.svc.EventRecordRepo.Save(ctx, er, tx); err != nil {
+		if err := t.eventRecordRepo.Save(ctx, er, tx); err != nil {
 			return err
 		}
-		return t.svc.StatisticsRepo.Save(ctx, statics, tx)
+		return t.statisticsRepo.Save(ctx, statics, tx)
 	})
 	return err
 }
@@ -112,11 +137,11 @@ func (t *tradeStatisticsService) MchAllOrderStatistics(ctx context.Context, even
 	if statics == nil {
 		return nil
 	}
-	exits, _ := t.svc.EventRecordRepo.Get(ctx, event.EventId, event.EventType, tag)
+	exits, _ := t.eventRecordRepo.Get(ctx, event.EventId, event.EventType, tag)
 	if exits != nil {
 		return nil
 	}
-	err := global.GVA_PAY_DB.Transaction(func(tx *gorm.DB) error {
+	err := global.DB.Transaction(func(tx *gorm.DB) error {
 		er := &model.EventProcessRecord{
 			EventID:     event.EventId,
 			EventType:   event.EventType,
@@ -125,10 +150,10 @@ func (t *tradeStatisticsService) MchAllOrderStatistics(ctx context.Context, even
 			Consumer:    tag,
 		}
 		// 唯一键防重复统计
-		if err := t.svc.EventRecordRepo.Save(ctx, er, tx); err != nil {
+		if err := t.eventRecordRepo.Save(ctx, er, tx); err != nil {
 			return err
 		}
-		return t.svc.StatisticsRepo.Save(ctx, statics, tx)
+		return t.statisticsRepo.Save(ctx, statics, tx)
 	})
 	return err
 }
@@ -155,60 +180,60 @@ func (t *tradeStatisticsService) buildMchOrderStatistic(event *event2.PaymentOrd
 	return nil
 }
 
-func (t *tradeStatisticsService) Count(ctx context.Context, req *admin.MchTradeStatisticRequest) (int64, error) {
+func (t *tradeStatisticsService) Count(ctx context.Context, req *dto.MchTradeStatisticRequest) (int64, error) {
 	if req.StartTime.IsZero() || req.EndTime.IsZero() {
 		return 0, errors.New("start or end time can not be empty")
 	}
 
-	return t.svc.TradeStatisticsRepo.Count(ctx, req)
+	return t.tradeStatisticsRepo.Count(ctx, req)
 }
 
-func (t *tradeStatisticsService) SearchDashboard(ctx context.Context, req *admin.MchTradeStatisticRequest) ([]*admin.TradeStatistic, error) {
+func (t *tradeStatisticsService) SearchDashboard(ctx context.Context, req *dto.MchTradeStatisticRequest) ([]*dto.TradeStatistic, error) {
 	if req.StartTime.IsZero() || req.EndTime.IsZero() {
 		return nil, errors.New("start or end time can not be empty")
 	}
 
-	models, err := t.svc.TradeStatisticsRepo.SearchDashboard(ctx, req)
+	models, err := t.tradeStatisticsRepo.SearchDashboard(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 	if len(models) == 0 {
-		return []*admin.TradeStatistic{}, nil
+		return []*dto.TradeStatistic{}, nil
 	}
 	return t.buildTradeStatistic(ctx, models)
 }
-func (t *tradeStatisticsService) CountGroup(ctx context.Context, start, end time.Time) ([]*admin.TradeStatistic, error) {
+func (t *tradeStatisticsService) CountGroup(ctx context.Context, start, end time.Time) ([]*dto.TradeStatistic, error) {
 	if start.IsZero() || end.IsZero() {
 		return nil, errors.New("start or end time can not be empty")
 	}
 
-	models, err := t.svc.TradeStatisticsRepo.CountGroup(ctx, start, end)
+	models, err := t.tradeStatisticsRepo.CountGroup(ctx, start, end)
 	if err != nil {
 		return nil, err
 	}
 	if len(models) == 0 {
-		return []*admin.TradeStatistic{}, nil
+		return []*dto.TradeStatistic{}, nil
 	}
 
 	return t.buildTradeStatistic(ctx, models)
 }
-func (t *tradeStatisticsService) CountGroupMch(ctx context.Context, mchNo string, start, end time.Time) ([]*admin.TradeStatistic, error) {
+func (t *tradeStatisticsService) CountGroupMch(ctx context.Context, mchNo string, start, end time.Time) ([]*dto.TradeStatistic, error) {
 	if start.IsZero() || end.IsZero() {
 		return nil, errors.New("start or end time can not be empty")
 	}
 	if mchNo == "" {
 		return nil, errors.New("mchNo can not be empty")
 	}
-	models, err := t.svc.TradeStatisticsRepo.CountGroupMch(ctx, mchNo, start, end)
+	models, err := t.tradeStatisticsRepo.CountGroupMch(ctx, mchNo, start, end)
 	if err != nil {
 		return nil, err
 	}
 	if len(models) == 0 {
-		return []*admin.TradeStatistic{}, nil
+		return []*dto.TradeStatistic{}, nil
 	}
 	return t.buildTradeStatistic(ctx, models)
 }
-func (t *tradeStatisticsService) CountGroupMchApp(ctx context.Context, mchNo string, appNo string, start, end time.Time) ([]*admin.TradeStatistic, error) {
+func (t *tradeStatisticsService) CountGroupMchApp(ctx context.Context, mchNo string, appNo string, start, end time.Time) ([]*dto.TradeStatistic, error) {
 	if start.IsZero() || end.IsZero() {
 		return nil, errors.New("start or end time can not be empty")
 	}
@@ -218,27 +243,27 @@ func (t *tradeStatisticsService) CountGroupMchApp(ctx context.Context, mchNo str
 	if appNo == "" {
 		return nil, errors.New("appNo can not be empty")
 	}
-	models, err := t.svc.TradeStatisticsRepo.CountGroupMchApp(ctx, mchNo, appNo, start, end)
+	models, err := t.tradeStatisticsRepo.CountGroupMchApp(ctx, mchNo, appNo, start, end)
 	if err != nil {
 		return nil, err
 	}
 	if len(models) == 0 {
-		return []*admin.TradeStatistic{}, nil
+		return []*dto.TradeStatistic{}, nil
 	}
 	return t.buildTradeStatistic(ctx, models)
 }
-func (t *tradeStatisticsService) CountGroupMchAppAccount(ctx context.Context, mchNo string, appNo string, start, end time.Time) ([]*admin.TradeStatistic, error) {
-	models, err := t.svc.TradeStatisticsRepo.CountGroupMchAppAccount(ctx, mchNo, appNo, start, end)
+func (t *tradeStatisticsService) CountGroupMchAppAccount(ctx context.Context, mchNo string, appNo string, start, end time.Time) ([]*dto.TradeStatistic, error) {
+	models, err := t.tradeStatisticsRepo.CountGroupMchAppAccount(ctx, mchNo, appNo, start, end)
 	if err != nil {
 		return nil, err
 	}
 	if len(models) == 0 {
-		return []*admin.TradeStatistic{}, nil
+		return []*dto.TradeStatistic{}, nil
 	}
 	return t.buildTradeStatistic(ctx, models)
 }
 
-func (t *tradeStatisticsService) buildTradeStatistic(ctx context.Context, models []*model.TradeStatistic) ([]*admin.TradeStatistic, error) {
+func (t *tradeStatisticsService) buildTradeStatistic(ctx context.Context, models []*model.TradeStatistic) ([]*dto.TradeStatistic, error) {
 	var mchNos = []string{}
 	var mchNosExists = map[string]struct{}{}
 	var appNos = []string{}
@@ -267,7 +292,7 @@ func (t *tradeStatisticsService) buildTradeStatistic(ctx context.Context, models
 	var mchAppMap = map[string]*model.Application{}
 	var paymentAccountMap = map[string]*model.PaymentAccount{}
 	if len(mchNos) > 0 {
-		mchInfos, err := t.svc.MchRepo.Search(ctx, admin.MchQueryRequest{MchNos: mchNos, Page: 1, PageSize: len(mchNos)})
+		mchInfos, err := t.mchRepo.Search(ctx, dtoSys.MchQueryRequest{MchNos: mchNos, Page: 1, PageSize: len(mchNos)})
 		if err != nil {
 			return nil, err
 		}
@@ -276,7 +301,7 @@ func (t *tradeStatisticsService) buildTradeStatistic(ctx context.Context, models
 		}
 	}
 	if len(appNos) > 0 {
-		mchApps, err := t.svc.AppRepo.Search(ctx, &admin.ApplicationQueryRequest{AppNos: appNos, Page: 1, PageSize: len(appNos)})
+		mchApps, err := t.appRepo.Search(ctx, &dto.ApplicationQueryRequest{AppNos: appNos, Page: 1, PageSize: len(appNos)})
 		if err != nil {
 			return nil, err
 		}
@@ -285,7 +310,7 @@ func (t *tradeStatisticsService) buildTradeStatistic(ctx context.Context, models
 		}
 	}
 	if len(accountNos) > 0 {
-		paymentAccounts, err := t.svc.PaymentAccountRepo.GetOnlyAccountNo(ctx, accountNos)
+		paymentAccounts, err := t.paymentAccountRepo.GetOnlyAccountNo(ctx, accountNos)
 		if err != nil {
 			return nil, err
 		}
@@ -293,7 +318,7 @@ func (t *tradeStatisticsService) buildTradeStatistic(ctx context.Context, models
 			paymentAccountMap[v.AccountNo] = v
 		}
 	}
-	var tradeStatistics = make([]*admin.TradeStatistic, 0, len(models))
+	var tradeStatistics = make([]*dto.TradeStatistic, 0, len(models))
 	for _, v := range models {
 		mchName := ""
 		if mchMap[v.MchNo] != nil {
@@ -307,7 +332,7 @@ func (t *tradeStatisticsService) buildTradeStatistic(ctx context.Context, models
 		if paymentAccountMap[v.AccountNo] != nil {
 			accountName = paymentAccountMap[v.AccountNo].Name
 		}
-		tradeStatistics = append(tradeStatistics, &admin.TradeStatistic{
+		tradeStatistics = append(tradeStatistics, &dto.TradeStatistic{
 			AppName:       appName,
 			MchName:       mchName,
 			AccountName:   accountName,
@@ -334,11 +359,11 @@ func (t *tradeStatisticsService) HandlePaymentEvent(ctx context.Context, event *
 	if statics == nil {
 		return nil
 	}
-	exits, _ := t.svc.EventRecordRepo.Get(ctx, event.EventId, event.EventType, tag)
+	exits, _ := t.eventRecordRepo.Get(ctx, event.EventId, event.EventType, tag)
 	if exits != nil {
 		return nil
 	}
-	err := global.GVA_PAY_DB.Transaction(func(tx *gorm.DB) error {
+	err := global.DB.Transaction(func(tx *gorm.DB) error {
 		er := &model.EventProcessRecord{
 			EventID:     event.EventId,
 			EventType:   event.EventType,
@@ -347,10 +372,10 @@ func (t *tradeStatisticsService) HandlePaymentEvent(ctx context.Context, event *
 			Consumer:    tag,
 		}
 		// 唯一键防重复统计
-		if err := t.svc.EventRecordRepo.Save(ctx, er, tx); err != nil {
+		if err := t.eventRecordRepo.Save(ctx, er, tx); err != nil {
 			return err
 		}
-		return t.svc.TradeStatisticsRepo.Save(ctx, statics, tx)
+		return t.tradeStatisticsRepo.Save(ctx, statics, tx)
 	})
 	return err
 }
@@ -389,7 +414,7 @@ func (t *tradeStatisticsService) HandleRefundEvent(ctx context.Context, event *e
 	if !(event.NewStatus == refund.Status_Success) {
 		return nil
 	}
-	exits, _ := t.svc.EventRecordRepo.Get(ctx, event.EventId, event.EventType, tag)
+	exits, _ := t.eventRecordRepo.Get(ctx, event.EventId, event.EventType, tag)
 	if exits != nil {
 		return nil
 	}
@@ -397,7 +422,7 @@ func (t *tradeStatisticsService) HandleRefundEvent(ctx context.Context, event *e
 	if err != nil {
 		return err
 	}
-	err = global.GVA_PAY_DB.Transaction(func(tx *gorm.DB) error {
+	err = global.DB.Transaction(func(tx *gorm.DB) error {
 		er := &model.EventProcessRecord{
 			EventID:     event.EventId,
 			EventType:   event.EventType,
@@ -406,16 +431,16 @@ func (t *tradeStatisticsService) HandleRefundEvent(ctx context.Context, event *e
 			Consumer:    tag,
 		}
 		// 唯一键防重复统计
-		if err := t.svc.EventRecordRepo.Save(ctx, er, tx); err != nil {
+		if err := t.eventRecordRepo.Save(ctx, er, tx); err != nil {
 			return err
 		}
-		return t.svc.TradeStatisticsRepo.Save(ctx, statics, tx)
+		return t.tradeStatisticsRepo.Save(ctx, statics, tx)
 	})
 	return err
 }
 
 func (t *tradeStatisticsService) buildRefundTradeStatistic(ctx context.Context, event *event2.RefundOrderStatusEvent) (*model.TradeStatistic, error) {
-	payOrder, err := t.svc.PaymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
+	payOrder, err := t.paymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
 		OrderNo: event.OrderNo,
 		AppNo:   event.AppNo,
 		TradeNo: "",

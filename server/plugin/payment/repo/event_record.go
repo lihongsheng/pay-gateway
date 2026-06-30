@@ -2,10 +2,10 @@ package repo
 
 import (
 	"context"
-	"github.com/lihongsheng/pay-gateway/global"
+	"time"
+
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
 	"gorm.io/gorm"
-	"time"
 )
 
 type EventRecordRepo interface {
@@ -15,10 +15,11 @@ type EventRecordRepo interface {
 }
 
 type eventRecordRepoImpl struct {
+	db *gorm.DB
 }
 
-func NewEventRecordRepo() EventRecordRepo {
-	return &eventRecordRepoImpl{}
+func NewEventRecordRepo(db *gorm.DB) EventRecordRepo {
+	return &eventRecordRepoImpl{db: db}
 }
 
 func (e *eventRecordRepoImpl) Save(ctx context.Context, record *model.EventProcessRecord, tx *gorm.DB) error {
@@ -27,7 +28,7 @@ func (e *eventRecordRepoImpl) Save(ctx context.Context, record *model.EventProce
 
 func (e *eventRecordRepoImpl) Get(ctx context.Context, eventID string, eventType string, consumer string) (*model.EventProcessRecord, error) {
 	var record *model.EventProcessRecord
-	err := global.GVA_PAY_DB.WithContext(ctx).Where("event_id = ? and event_type = ? and consumer = ?", eventID, eventType, consumer).First(&record).Error
+	err := e.db.WithContext(ctx).Where("event_id = ? and event_type = ? and consumer = ?", eventID, eventType, consumer).First(&record).Error
 	if err != nil {
 		return nil, err
 	}
@@ -35,10 +36,5 @@ func (e *eventRecordRepoImpl) Get(ctx context.Context, eventID string, eventType
 }
 
 func (e *eventRecordRepoImpl) Delete(ctx context.Context, lastTime time.Time) error {
-	//var record model.EventProcessRecord
-	//err := global.GVA_PAY_DB.WithContext(ctx).Where("created_at < ?", lastTime).Order("id DESC").First(&record).Error
-	//if err != nil {
-	//	return err
-	//}
-	return global.GVA_PAY_DB.WithContext(ctx).Where("created_at < ?", lastTime).Delete(&model.EventProcessRecord{}).Error
+	return e.db.WithContext(ctx).Where("created_at < ?", lastTime).Delete(&model.EventProcessRecord{}).Error
 }
