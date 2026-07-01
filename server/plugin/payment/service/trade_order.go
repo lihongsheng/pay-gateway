@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"errors"
+	system2 "github.com/lihongsheng/pay-gateway/model/system"
+	"github.com/lihongsheng/pay-gateway/repo/system"
 	"time"
 
-	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	dtoSys "github.com/lihongsheng/pay-gateway/dto/system"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
@@ -22,12 +24,17 @@ type TradeOrderService interface {
 
 type tradeOrderService struct {
 	paymentOrderRepo   repo.PaymentOrderRepo
-	mchRepo            repo.MchRepo
+	mchRepo            system.MchRepo
 	appRepo            repo.ApplicationRepo
 	paymentAccountRepo repo.PaymentAccountRepo
 }
 
-func NewTradeOrderService(paymentOrderRepo repo.PaymentOrderRepo, mchRepo repo.MchRepo, appRepo repo.ApplicationRepo, paymentAccountRepo repo.PaymentAccountRepo) TradeOrderService {
+func NewTradeOrderService(
+	paymentOrderRepo repo.PaymentOrderRepo,
+	mchRepo system.MchRepo,
+	appRepo repo.ApplicationRepo,
+	paymentAccountRepo repo.PaymentAccountRepo,
+) TradeOrderService {
 	return &tradeOrderService{
 		paymentOrderRepo:   paymentOrderRepo,
 		mchRepo:            mchRepo,
@@ -35,9 +42,6 @@ func NewTradeOrderService(paymentOrderRepo repo.PaymentOrderRepo, mchRepo repo.M
 		paymentAccountRepo: paymentAccountRepo,
 	}
 }
-
-// DefaultTradeOrder 包级单例
-var DefaultTradeOrder TradeOrderService
 
 func (t *tradeOrderService) Search(ctx context.Context, req *dto.TradeSearchRequest) ([]*dto.TradeSearchResponse, error) {
 	if err := req.Validate(); err != nil {
@@ -96,7 +100,7 @@ func (t *tradeOrderService) EntityToParamResponse(ctx context.Context, req []*mo
 	return res, nil
 }
 
-func (t *tradeOrderService) getLink(ctx context.Context, req []*model.PaymentOrder) (mch map[string]*model.Merchant, app map[string]*model.Application, paymentAccount map[string]*model.PaymentAccount, err error) {
+func (t *tradeOrderService) getLink(ctx context.Context, req []*model.PaymentOrder) (mch map[string]*system2.Merchant, app map[string]*model.Application, paymentAccount map[string]*model.PaymentAccount, err error) {
 	var mchNos = []string{}
 	var existMchNos = map[string]string{}
 	var appNos = []string{}
@@ -121,7 +125,7 @@ func (t *tradeOrderService) getLink(ctx context.Context, req []*model.PaymentOrd
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	mch = map[string]*model.Merchant{}
+	mch = map[string]*system2.Merchant{}
 	if len(mchs) == 0 {
 		return nil, nil, nil, errors.New("商户不存在")
 	}

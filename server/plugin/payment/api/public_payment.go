@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/lihongsheng/pay-gateway/plugin/payment/service/enter"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -8,7 +9,6 @@ import (
 
 	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
-	servicePay "github.com/lihongsheng/pay-gateway/plugin/payment/service"
 	"github.com/lihongsheng/pay-gateway/utils/response"
 )
 
@@ -19,7 +19,7 @@ func Pay(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	resp, err := servicePay.DefaultPayment.Payment(c.Request.Context(), &req, uuid.NewString())
+	resp, err := enter.ServiceApiApp.PaymentService.Payment(c.Request.Context(), &req, uuid.NewString())
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -34,7 +34,7 @@ func QueryPayment(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	resp, err := servicePay.DefaultPayment.Query(c.Request.Context(), &req)
+	resp, err := enter.ServiceApiApp.PaymentService.Query(c.Request.Context(), &req)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -49,7 +49,7 @@ func ClosePayment(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	err = servicePay.DefaultPayment.Close(c.Request.Context(), &req)
+	err = enter.ServiceApiApp.PaymentService.Close(c.Request.Context(), &req)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -66,7 +66,7 @@ func PaymentCallback(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, "参数错误", c)
 		return
 	}
-	resp, err := servicePay.DefaultPayment.PublishCallback(c.Request.Context(), c.Request, channel, mchNo, appNo, orderNo, false)
+	resp, err := enter.ServiceApiApp.PaymentService.PublishCallback(c.Request.Context(), c.Request, channel, mchNo, appNo, orderNo, false)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -85,7 +85,7 @@ func PaymentTestCallback(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, "参数错误", c)
 		return
 	}
-	resp, err := servicePay.DefaultPayment.PublishCallback(c.Request.Context(), c.Request, channel, mchNo, appNo, orderNo, true)
+	resp, err := enter.ServiceApiApp.PaymentService.PublishCallback(c.Request.Context(), c.Request, channel, mchNo, appNo, orderNo, true)
 	if err != nil {
 		FailErrMessage(err, c)
 		return

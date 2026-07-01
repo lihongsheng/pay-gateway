@@ -9,9 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// PluginRouter ：/api/v1/plugin/list 与每个插件自身路由 /api/v1/plugin/<name>/*
+// PluginRouter ：/api/plugin/list 与每个插件自身路由 /api/plugin/<name>/*
 func PluginRouter(g *gin.Engine) {
-	p := g.Group("/api/v1/plugin", middleware.JWTAuth(), middleware.CasbinAuth())
+	p := g.Group("/api/plugin", middleware.JWTAuth(), middleware.CasbinAuth())
 	p.GET("/list", func(c *gin.Context) {
 		type item struct {
 			Name    string `json:"name"`
@@ -24,7 +24,7 @@ func PluginRouter(g *gin.Engine) {
 		response.OK(c, gin.H{"list": out, "total": len(out)})
 	})
 	for _, pl := range plugin.All() {
-		pl.RegisterRoute(g)
+		pl.RegisterRoute(g, p)
 		log.Global().Info("plugin route mounted:" + pl.Name())
 	}
 }

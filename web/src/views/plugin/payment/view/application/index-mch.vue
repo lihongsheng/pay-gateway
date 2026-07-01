@@ -1,140 +1,67 @@
 <template>
   <div class="page-wrap">
-    <div class="flex justify-between items-center mb-4">
-      <h2 class="text-lg font-bold">应用管理</h2>
-    </div>
-
-    <el-card shadow="never" class="mb-4">
+    <!-- 搜索栏 -->
+    <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchInfo" class="search-form">
-        <el-row :gutter="10">
-          <el-col :span="6">
-            <el-form-item label="应用编号">
-              <el-input
-                  v-model="searchInfo.app_no"
-                  placeholder="请输入应用编号"
-                  clearable
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="应用名称">
-              <el-input
-                  v-model="searchInfo.app_name"
-                  placeholder="请输入应用名称"
-                  clearable
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="状态">
-              <el-select
-                  v-model="searchInfo.status"
-                  placeholder="请选择状态"
-                  clearable
-                  class="w-full"
-              >
-                <el-option label="启用" :value="1" />
-                <el-option label="禁用" :value="2" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="10">
-          <el-col :span="24" class="text-right">
-            <el-button type="primary" @click="onSubmit">查询</el-button>
-            <el-button @click="onReset">重置</el-button>
-            <el-button type="primary" @click="addApplication">新增应用</el-button>
-          </el-col>
-        </el-row>
+        <el-form-item label="应用编号">
+          <el-input v-model="searchInfo.app_no" placeholder="请输入应用编号" clearable style="width:180px" @keyup.enter="onSubmit" @clear="onSubmit">
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+        </el-form-item>
+        <el-form-item label="应用名称">
+          <el-input v-model="searchInfo.app_name" placeholder="请输入应用名称" clearable style="width:180px" @keyup.enter="onSubmit" @clear="onSubmit" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="searchInfo.status" placeholder="请选择状态" clearable style="width:120px">
+            <el-option label="启用" :value="1" />
+            <el-option label="禁用" :value="2" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="onSubmit"><el-icon><Search /></el-icon>搜索</el-button>
+          <el-button @click="onReset">重置</el-button>
+        </el-form-item>
       </el-form>
     </el-card>
 
-    <el-card shadow="never">
-      <el-table
-          :data="tableData"
-          style="width: 100%"
-          row-key="id"
-          v-loading="loading"
-          border
-      >
-        <!--        <el-table-column prop="id" label="ID" width="80" />-->
+    <!-- 数据栏 -->
+    <el-card shadow="never" class="table-card">
+      <div class="table-toolbar">
+        <el-button v-permission="'application:add'" type="primary" @click="addApplication">
+          <el-icon><Plus /></el-icon>新增应用
+        </el-button>
+      </div>
+      <el-table :data="tableData" row-key="id" v-loading="loading" stripe border>
         <el-table-column prop="app_no" label="应用编号" min-width="150" show-overflow-tooltip />
         <el-table-column prop="app_name" label="应用名称" min-width="120" show-overflow-tooltip />
         <el-table-column prop="mch_no" label="商户编号" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column label="状态" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'danger'">
+            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small" effect="dark">
               {{ row.status === 1 ? '启用' : '禁用' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="创建时间" width="180">
-          <template #default="{ row }">
-            {{ formatDate(row.created_at) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="updatedAt" label="更新时间" width="180">
-          <template #default="{ row }">
-            {{ formatDate(row.updated_at) }}
-          </template>
+        <el-table-column label="创建时间" width="170" show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
-            <el-button
-                size="small"
-                type="primary"
-                link
-                @click="loadApplicationQrcode(row.app_no, row.app_name)"
-            >
-              二维码
-            </el-button>
-            <el-button
-                size="small"
-                type="primary"
-                link
-                @click="getApplication(row.app_no)"
-            >
-              查看
-            </el-button>
-            <el-button
-                size="small"
-                type="primary"
-                link
-                @click="editApplication(row)"
-            >
-              编辑
-            </el-button>
-            <el-button
-                size="small"
-                :type="row.status === 1 ? 'danger' : 'success'"
-                link
-                @click="changeStatus(row)"
-            >
+            <el-button size="small" type="primary" link @click="loadApplicationQrcode(row.app_no, row.app_name)">二维码</el-button>
+            <el-button size="small" type="primary" link @click="getApplication(row.app_no)">查看</el-button>
+            <el-button v-permission="'application:edit'" size="small" type="primary" link @click="editApplication(row)">编辑</el-button>
+            <el-button v-permission="'application:status'" size="small" :type="row.status === 1 ? 'danger' : 'success'" link @click="changeStatus(row)">
               {{ row.status === 1 ? '禁用' : '启用' }}
             </el-button>
-            <el-button
-                size="small"
-                type="primary"
-                link
-                @click="showPaymentAccount(row.app_no, row.app_name, row.multi_channel)"
-            >
-              支付配置
-            </el-button>
+            <el-button size="small" type="primary" link @click="showPaymentAccount(row.app_no, row.app_name, row.multi_channel)">支付配置</el-button>
           </template>
         </el-table-column>
       </el-table>
 
-      <div class="pagination mt-4">
-        <el-pagination
-            background
-            layout="total, sizes, prev, pager, next, jumper"
-            :current-page="page"
-            :page-size="pageSize"
-            :page-sizes="[10, 20, 30, 50]"
-            :total="total"
-            @current-change="handleCurrentChange"
-            @size-change="handleSizeChange"
-        />
+      <div class="pagination-wrap">
+        <el-pagination background layout="total,sizes,prev,pager,next,jumper"
+                       :total="total" v-model:current-page="page" v-model:page-size="pageSize"
+                       :page-sizes="[10, 20, 50, 100]" @current-change="handleCurrentChange" @size-change="handleSizeChange" />
       </div>
     </el-card>
 
@@ -262,7 +189,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import ApplicationForm from "../../form/application-form-mch.vue"
 import PaymentAccount  from "../../components/payment-account.vue"
 import { useRoute } from 'vue-router'
-import {DocumentCopy} from "@element-plus/icons-vue";
+import { DocumentCopy, Search, Plus } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
 
 const route = useRoute()  // 添加路由实例
@@ -621,21 +548,11 @@ const loadApplicationQrcode = async (appNo, appName) => {
 </script>
 
 <style scoped>
-.page-wrap {
-  padding: 20px;
-}
-
-.dialog-footer {
-  text-align: right;
-}
-
-:deep(.el-table .el-table__row .cell) {
-  word-break: break-all;
-}
-
-.pagination {
-  display: flex;
-  justify-content: center;
-  margin-top: 20px;
-}
+.page-wrap { display: flex; flex-direction: column; gap: 12px; }
+.search-card { }
+.search-form { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.search-form .el-form-item { margin-bottom: 0; }
+.table-card { }
+.table-toolbar { margin-bottom: 12px; }
+.pagination-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
 </style>

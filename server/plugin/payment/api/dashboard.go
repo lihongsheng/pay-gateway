@@ -2,9 +2,9 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/service/enter"
 
 	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
-	servicePay "github.com/lihongsheng/pay-gateway/plugin/payment/service"
 	"github.com/lihongsheng/pay-gateway/utils/response"
 )
 
@@ -25,7 +25,7 @@ func TotalRequest(c *gin.Context) {
 	if user.ISMch() {
 		req.MchNo = user.HaveMchNo
 	}
-	data, err := servicePay.DefaultTradeStatistics.GetAllRequestOrder(c.Request.Context(), req.MchNo, req.StartTime, req.EndTime)
+	data, err := enter.ServiceApiApp.TradeStatisticsService.GetAllRequestOrder(c.Request.Context(), req.MchNo, req.StartTime, req.EndTime)
 	if err != nil {
 		response.Fail(c, err.Error())
 		return
@@ -51,7 +51,7 @@ func DashboardIndex(c *gin.Context) {
 		response.Fail(c, "无权限")
 		return
 	}
-	data, err := servicePay.DefaultTradeStatistics.CountGroup(c.Request.Context(), req.StartTime, req.EndTime)
+	data, err := enter.ServiceApiApp.TradeStatisticsService.CountGroup(c.Request.Context(), req.StartTime, req.EndTime)
 	if err != nil {
 		response.Fail(c, err.Error())
 		return
@@ -73,7 +73,7 @@ func MchIndex(c *gin.Context) {
 		response.Fail(c, err.Error())
 		return
 	}
-	data, err := servicePay.DefaultTradeStatistics.CountGroupMch(c.Request.Context(), req.MchNo, req.StartTime, req.EndTime)
+	data, err := enter.ServiceApiApp.TradeStatisticsService.CountGroupMch(c.Request.Context(), req.MchNo, req.StartTime, req.EndTime)
 	if err != nil {
 		response.Fail(c, err.Error())
 		return
@@ -95,7 +95,7 @@ func MchAppIndex(c *gin.Context) {
 		response.Fail(c, err.Error())
 		return
 	}
-	data, err := servicePay.DefaultTradeStatistics.CountGroupMchApp(c.Request.Context(), req.MchNo, req.AppNo, req.StartTime, req.EndTime)
+	data, err := enter.ServiceApiApp.TradeStatisticsService.CountGroupMchApp(c.Request.Context(), req.MchNo, req.AppNo, req.StartTime, req.EndTime)
 	if err != nil {
 		response.Fail(c, err.Error())
 		return
@@ -117,7 +117,7 @@ func MchAppAccountAllIndex(c *gin.Context) {
 		response.Fail(c, err.Error())
 		return
 	}
-	data, err := servicePay.DefaultTradeStatistics.CountGroupMchAppAccount(c.Request.Context(), req.MchNo, req.AppNo, req.StartTime, req.EndTime)
+	data, err := enter.ServiceApiApp.TradeStatisticsService.CountGroupMchAppAccount(c.Request.Context(), req.MchNo, req.AppNo, req.StartTime, req.EndTime)
 	if err != nil {
 		response.Fail(c, err.Error())
 		return
@@ -139,7 +139,7 @@ func SearchIndex(c *gin.Context) {
 		response.Fail(c, err.Error())
 		return
 	}
-	data, err := servicePay.DefaultTradeStatistics.SearchDashboard(c.Request.Context(), &req)
+	data, err := enter.ServiceApiApp.TradeStatisticsService.SearchDashboard(c.Request.Context(), &req)
 	if err != nil {
 		response.Fail(c, err.Error())
 		return

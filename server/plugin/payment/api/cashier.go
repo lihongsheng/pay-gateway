@@ -2,11 +2,11 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/service/enter"
 
 	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
-	servicePay "github.com/lihongsheng/pay-gateway/plugin/payment/service"
 	"github.com/lihongsheng/pay-gateway/utils/response"
 )
 
@@ -16,7 +16,7 @@ func CashierRedirectUrl(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	r, err := servicePay.DefaultAggregate.GetRedirectUrl(c.Request.Context(), &req, enum.CashierPayment)
+	r, err := enter.ServiceApiApp.Aggregate.GetRedirectUrl(c.Request.Context(), &req, enum.CashierPayment)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -30,7 +30,7 @@ func CashierCreate(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	r, err := servicePay.DefaultCashier.Create(c.Request.Context(), &req)
+	r, err := enter.ServiceApiApp.CashierService.Create(c.Request.Context(), &req)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -44,7 +44,7 @@ func CashierPayment(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	r, err := servicePay.DefaultCashier.Payment(c.Request.Context(), &req)
+	r, err := enter.ServiceApiApp.CashierService.Payment(c.Request.Context(), &req)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -58,7 +58,7 @@ func CashierQuery(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	r, err := servicePay.DefaultCashier.Query(c.Request.Context(), &req)
+	r, err := enter.ServiceApiApp.CashierService.Query(c.Request.Context(), &req)
 	if err != nil {
 		FailErrMessage(err, c)
 		return

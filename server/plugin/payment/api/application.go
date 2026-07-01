@@ -2,10 +2,10 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/service/enter"
 	"go.uber.org/zap"
 
 	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
-	servicePay "github.com/lihongsheng/pay-gateway/plugin/payment/service"
 	payUtils "github.com/lihongsheng/pay-gateway/plugin/payment/utils"
 	"github.com/lihongsheng/pay-gateway/utils/response"
 )
@@ -35,7 +35,7 @@ func GetAppInfo(c *gin.Context) {
 		return
 	}
 	user := GetUserInfo(c)
-	info, err := servicePay.DefaultApplication.Get(c.Request.Context(), appNO)
+	info, err := enter.ServiceApiApp.AppService.Get(c.Request.Context(), appNO)
 	if err != nil {
 		zap.L().Error("查询失败!", zap.Error(err))
 		response.Fail(c, "查询失败")
@@ -76,13 +76,13 @@ func SearchApplication(c *gin.Context) {
 	if user.ISMch() {
 		req.MchNo = user.HaveMchNo
 	}
-	info, err := servicePay.DefaultApplication.Search(c.Request.Context(), &req)
+	info, err := enter.ServiceApiApp.AppService.Search(c.Request.Context(), &req)
 	if err != nil {
 		zap.L().Error("查询失败!", zap.Error(err))
 		response.Fail(c, "查询失败")
 		return
 	}
-	count, err := servicePay.DefaultApplication.Count(c.Request.Context(), &req)
+	count, err := enter.ServiceApiApp.AppService.Count(c.Request.Context(), &req)
 	response.OK(c, PageResult{
 		List:     info,
 		Total:    count,
@@ -111,7 +111,7 @@ func SaveApplication(c *gin.Context) {
 	if user.ISMch() {
 		req.MchNo = user.HaveMchNo
 	}
-	_, err = servicePay.DefaultApplication.Save(c.Request.Context(), &req)
+	_, err = enter.ServiceApiApp.AppService.Save(c.Request.Context(), &req)
 	if err != nil {
 		zap.L().Error("保存失败!", zap.Error(err))
 		response.Fail(c, "保存失败")
@@ -137,7 +137,7 @@ func ChangeAppStatus(c *gin.Context) {
 		return
 	}
 	user := GetUserInfo(c)
-	err = servicePay.DefaultApplication.ChangeStatus(c.Request.Context(), req.ID, req.Status, user)
+	err = enter.ServiceApiApp.AppService.ChangeStatus(c.Request.Context(), req.ID, req.Status, user)
 	if err != nil {
 		zap.L().Error("改变失败!", zap.Error(err))
 		response.Fail(c, "改变失败")
@@ -153,7 +153,7 @@ func GetQrCode(c *gin.Context) {
 		return
 	}
 
-	u, err := servicePay.DefaultAggregate.GenQrCode(c.Request.Context(), appNO)
+	u, err := enter.ServiceApiApp.Aggregate.GenQrCode(c.Request.Context(), appNO)
 	if err != nil {
 		zap.L().Error("GetQrCode", zap.Error(err))
 		response.Fail(c, "获取二维码失败："+err.Error())

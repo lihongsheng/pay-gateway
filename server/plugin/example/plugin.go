@@ -9,12 +9,12 @@
 package example
 
 import (
-  "github.com/lihongsheng/pay-gateway/model/system"
-  "github.com/lihongsheng/pay-gateway/plugin"
-  exampleModel "github.com/lihongsheng/pay-gateway/plugin/example/model"
+	"github.com/lihongsheng/pay-gateway/model/system"
+	"github.com/lihongsheng/pay-gateway/plugin"
+	exampleModel "github.com/lihongsheng/pay-gateway/plugin/example/model"
 
-  "github.com/gin-gonic/gin"
-  "gorm.io/gorm"
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type p struct{}
@@ -25,32 +25,32 @@ func (p) Version() string { return "0.1.0" }
 func (p) Models() []interface{} { return []interface{}{&exampleModel.Note{}} }
 
 func (p) Menus() []system.SysMenu {
-  return []system.SysMenu{
-    {
-      Type:      system.MenuTypeMenu,
-      Path:      "/plugin/example",
-      Name:      "PluginExample",
-      Component: "plugin/example/index",
-      Title:     "示例插件",
-      Icon:      "edit",
-      Sort:      91,
-      // button 权限节点作为 Children（type=button，仅承载 permission 字段）
-      Children: []system.SysMenu{
-        {Type: system.MenuTypeButton, Name: "新增笔记", Permission: "example:add"},
-        {Type: system.MenuTypeButton, Name: "删除笔记", Permission: "example:del"},
-      },
-    },
-  }
+	return []system.SysMenu{
+		{
+			Type:      system.MenuTypeMenu,
+			Path:      "/plugin/example",
+			Name:      "PluginExample",
+			Component: "plugin/example/index",
+			Title:     "示例插件",
+			Icon:      "edit",
+			Sort:      91,
+			ApiRules:  `[{"path":"/api/plugin/example/v1/note/list","method":"GET"}]`,
+			Children: []system.SysMenu{
+				{Type: system.MenuTypeButton, Name: "新增笔记", Permission: "example:add", ApiRules: `[{"path":"/api/plugin/example/v1/note","method":"POST"}]`},
+				{Type: system.MenuTypeButton, Name: "删除笔记", Permission: "example:del", ApiRules: `[{"path":"/api/plugin/example/v1/note/:id","method":"DELETE"}]`},
+			},
+		},
+	}
 }
 
-func (p) RegisterRoute(g *gin.Engine) {
-  g.POST("/note", create)
-  g.DELETE("/note/:id", del)
-  g.GET("/note/list", list)
+func (p) RegisterRoute(g *gin.Engine, privatePlugin *gin.RouterGroup) {
+	g.POST("/note", create)
+	g.DELETE("/note/:id", del)
+	g.GET("/note/list", list)
 }
 
 func (p) SeedTable(db *gorm.DB) error {
-  return db.Create(&exampleModel.Note{Title: "Hello", Content: "示例插件初始化笔记"}).Error
+	return db.Create(&exampleModel.Note{Title: "Hello", Content: "示例插件初始化笔记"}).Error
 }
 
 func (p) Init() {

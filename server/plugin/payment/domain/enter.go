@@ -1,8 +1,9 @@
 package domain
 
 import (
-	"github.com/lihongsheng/pay-gateway/plugin/payment/infrastructure"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
+	"github.com/lihongsheng/pay-gateway/config"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/svc"
+	"github.com/redis/go-redis/v9"
 )
 
 type ServiceGroup struct {
@@ -12,17 +13,16 @@ type ServiceGroup struct {
 }
 
 func NewServiceGroup(
-	paymentOrderRepo repo.PaymentOrderRepo,
-	refundRepo repo.RefundRepo,
-	paymentAccountRepo repo.PaymentAccountRepo,
-	routerRepo repo.RouterRepo,
-	event infrastructure.Event,
+	svc *svc.ServiceContext,
+	redis *redis.Client,
+	cfg config.Config,
 ) *ServiceGroup {
-	return &ServiceGroup{
-		PaymentService: NewPaymentService(paymentOrderRepo, paymentAccountRepo, event),
-		Router:         NewRouterService(paymentAccountRepo, routerRepo),
-		RefundService:  NewRefundService(refundRepo, paymentOrderRepo, paymentAccountRepo, event),
+	Service = &ServiceGroup{
+		PaymentService: NewPaymentService(svc, redis, cfg),
+		Router:         NewRouterService(svc.PaymentAccountRepo, svc.RouterRepo),
+		RefundService:  NewRefundService(svc),
 	}
+	return Service
 }
 
 // DefaultServiceGroup 包级单例

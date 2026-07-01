@@ -2,6 +2,7 @@ package svc
 
 import (
 	"github.com/IBM/sarama"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/config"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/infrastructure"
 	adapter2 "github.com/lihongsheng/pay-gateway/plugin/payment/infrastructure/adapter"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
@@ -24,10 +25,14 @@ type ServiceContext struct {
 	NotifyRepo          repo.NotifyRepo
 	EventRecordRepo     repo.EventRecordRepo
 	StatisticsRepo      repo.Statistics
+	Config              config.Config
 }
 
-func NewServiceContext(db *gorm.DB, redis *redis.Client, producer sarama.SyncProducer) *ServiceContext {
-	return &ServiceContext{
+var ServiceContextApp *ServiceContext
+
+func NewServiceContext(db *gorm.DB, redis *redis.Client, producer sarama.SyncProducer, config config.Config) *ServiceContext {
+	ServiceContextApp = &ServiceContext{
+		Config:              config,
 		MchRepo:             system.NewMchRepo(db),
 		AppRepo:             repo.NewApplicationRepo(db, redis),
 		PaymentAccountRepo:  repo.NewPaymentAccountRepo(db, redis),
@@ -45,4 +50,5 @@ func NewServiceContext(db *gorm.DB, redis *redis.Client, producer sarama.SyncPro
 		},
 		Event: infrastructure.NewEvent(producer),
 	}
+	return ServiceContextApp
 }

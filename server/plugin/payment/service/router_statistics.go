@@ -27,9 +27,6 @@ func NewRouterStatisticsService(routerRepo repo.RouterRepo) RouterStatisticsServ
 	}
 }
 
-// DefaultRouterStatistics 包级单例
-var DefaultRouterStatistics RouterStatisticsService
-
 // HandleUserLimitEvent 处理用户登录限制事件
 // 微信可能会限制获取用户openid导致支付失败
 func (s *routerStatisticsService) HandleUserLimitEvent(ctx context.Context, event *event2.UserLoginLimitEvent) error {

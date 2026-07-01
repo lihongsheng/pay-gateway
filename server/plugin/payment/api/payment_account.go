@@ -1,13 +1,13 @@
 package api
 
 import (
+	"github.com/lihongsheng/pay-gateway/plugin/payment/service/enter"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
-	servicePay "github.com/lihongsheng/pay-gateway/plugin/payment/service"
 	"github.com/lihongsheng/pay-gateway/utils/response"
 )
 
@@ -29,7 +29,7 @@ func GetPaymentAccount(c *gin.Context) {
 		return
 	}
 	user := GetUserInfo(c)
-	info, err := servicePay.DefaultPaymentAccount.Get(c.Request.Context(), int64(id))
+	info, err := enter.ServiceApiApp.PaymentAccount.Get(c.Request.Context(), int64(id))
 	if err := user.ISHaveMchID(info.MchNo); err != nil {
 		response.Fail(c, err.Error())
 		return
@@ -62,7 +62,7 @@ func SavePaymentAccount(c *gin.Context) {
 	if user.ISMch() {
 		req.MchNo = user.HaveMchNo
 	}
-	err = servicePay.DefaultPaymentAccount.Save(c.Request.Context(), &req)
+	err = enter.ServiceApiApp.PaymentAccount.Save(c.Request.Context(), &req)
 	if err != nil {
 		zap.L().Error("保存失败!", zap.Error(err), zap.Any("data", req))
 		response.Fail(c, "保存失败"+err.Error())
@@ -88,7 +88,7 @@ func AccountList(c *gin.Context) {
 	}
 	user := GetUserInfo(c)
 
-	info, err := servicePay.DefaultPaymentAccount.GetAccountByAppNo(c.Request.Context(), appNO)
+	info, err := enter.ServiceApiApp.PaymentAccount.GetAccountByAppNo(c.Request.Context(), appNO)
 	if err != nil {
 		zap.L().Error("查询失败!", zap.Error(err))
 		response.Fail(c, "查询失败")
@@ -118,7 +118,7 @@ func GetChannelConfig(c *gin.Context) {
 		response.Fail(c, "参数错误")
 		return
 	}
-	info, err := servicePay.DefaultPaymentAccount.GetApplicationChannelConfig(c.Request.Context(), appNO)
+	info, err := enter.ServiceApiApp.PaymentAccount.GetApplicationChannelConfig(c.Request.Context(), appNO)
 	if err != nil {
 		zap.L().Error("查询失败!", zap.Error(err))
 		response.Fail(c, "查询失败")
@@ -142,7 +142,7 @@ func GetChannelPaymentMethod(c *gin.Context) {
 		response.Fail(c, "参数错误")
 		return
 	}
-	info, err := servicePay.DefaultPaymentAccount.GetPaymentProduct(channel)
+	info, err := enter.ServiceApiApp.PaymentAccount.GetPaymentProduct(channel)
 	if err != nil {
 		zap.L().Error("查询失败!", zap.Error(err))
 		response.Fail(c, "查询失败")
@@ -168,7 +168,7 @@ func GetTestQrCode(c *gin.Context) {
 		response.Fail(c, "参数错误")
 		return
 	}
-	u, order, err := servicePay.DefaultAggregate.GenTestQrCode(c.Request.Context(), appNO, accNO)
+	u, order, err := enter.ServiceApiApp.Aggregate.GenTestQrCode(c.Request.Context(), appNO, accNO)
 	if err != nil {
 		zap.L().Error("GetQrCode", zap.Error(err))
 		response.Fail(c, "获取二维码失败："+err.Error())

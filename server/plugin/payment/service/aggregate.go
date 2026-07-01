@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/lihongsheng/pay-gateway/config"
+	config2 "github.com/lihongsheng/pay-gateway/plugin/payment/config"
 	"net/url"
 	"strings"
 	"time"
 
-	"github.com/lihongsheng/pay-gateway/global"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/event"
@@ -45,6 +46,7 @@ type aggregateService struct {
 	eventPublisher     infrastructure.Event
 	domainPayment      domain.PaymentService
 	domainRouter       domain.Router
+	config             config.Config
 }
 
 func NewAggregateService(
@@ -54,6 +56,7 @@ func NewAggregateService(
 	eventPublisher infrastructure.Event,
 	domainPayment domain.PaymentService,
 	domainRouter domain.Router,
+	config config.Config,
 ) Aggregate {
 	return &aggregateService{
 		appRepo:            appRepo,
@@ -62,11 +65,9 @@ func NewAggregateService(
 		eventPublisher:     eventPublisher,
 		domainPayment:      domainPayment,
 		domainRouter:       domainRouter,
+		config:             config,
 	}
 }
-
-// DefaultAggregate 包级单例
-var DefaultAggregate Aggregate
 
 // GenTestQrCode 聚合支付测试二维码
 func (a *aggregateService) GenTestQrCode(ctx context.Context, appNo string, accNo string) (qrLink string, orderNo string, err error) {
@@ -78,12 +79,12 @@ func (a *aggregateService) GenTestQrCode(ctx context.Context, appNo string, accN
 	}
 	token, err := genAggregateToken(dto.AggregateToken{
 		AppNo: appInfo.AppNo,
-	})
+	}, a.config.Plugin.PaymentConfig)
 	if err != nil {
 		return "", "", errors2.NewError(errors2.ErrCodeInvalidParam, "token无效")
 	}
 	orderNo = fmt.Sprintf("PT%d%s%s", time.Now().UnixMilli(), utils.GenRandNumToStr(), utils.HashCrc(token, 4))
-	u, err := getWebBaseUrl(appInfo)
+	u, err := getWebBaseUrl(appInfo, a.config.Plugin.PaymentConfig)
 	if err != nil {
 		return "", "", errors2.WrapError(errors2.ErrCodeInvalidParam, "web域名格式错误:", err)
 	}
@@ -105,7 +106,7 @@ func (a *aggregateService) GenQrCode(ctx context.Context, appNo string) (string,
 		l.Error("AggregatePayment", zap.Error(err), zap.String("aggregateToken.AppNo", appNo))
 		return "", errors2.NewError(errors2.ErrCodeInvalidParam, "token无效")
 	}
-	u, err := getWebBaseUrl(appInfo)
+	u, err := getWebBaseUrl(appInfo, a.config.Plugin.PaymentConfig)
 	if err != nil {
 		return "", errors2.WrapError(errors2.ErrCodeInvalidParam, "web域名格式错误:", err)
 	}
@@ -113,7 +114,7 @@ func (a *aggregateService) GenQrCode(ctx context.Context, appNo string) (string,
 	query := url.Values{}
 	token, err := genAggregateToken(dto.AggregateToken{
 		AppNo: appInfo.AppNo,
-	})
+	}, a.config.Plugin.PaymentConfig)
 	if err != nil {
 		return "", errors2.NewError(errors2.ErrCodeInvalidParam, "token无效")
 	}
@@ -125,7 +126,7 @@ func (a *aggregateService) GenQrCode(ctx context.Context, appNo string) (string,
 
 func (a *aggregateService) GetApplication(ctx context.Context, token string) (*model.Application, error) {
 	l := log.WithCtx(ctx)
-	aggregateToken, err := getAggregateToken(token)
+	aggregateToken, err := getAggregateToken(token, a.config.Plugin.PaymentConfig)
 	if err != nil {
 		return nil, errors2.NewError(errors2.ErrCodeInvalidParam, "token无效")
 	}
@@ -142,7 +143,7 @@ func (a *aggregateService) GetUserOpenID(ctx context.Context, req public.Aggrega
 		return "", err
 	}
 	l := log.WithCtx(ctx)
-	aggregateToken, err := getAggregateToken(req.Token)
+	aggregateToken, err := getAggregateToken(req.Token, a.config.Plugin.PaymentConfig)
 	if err != nil {
 		return "", errors2.NewError(errors2.ErrCodeInvalidParam, "token无效")
 	}
@@ -169,7 +170,7 @@ func (a *aggregateService) GetUserOpenID(ctx context.Context, req public.Aggrega
 					UserLimit: true,
 					AccountNo: req.AccountNo,
 					CreateAt:  time.Now(),
-				}, global.Cfg.Payment.Topic.UserLimit)
+				}, a.config.Plugin.PaymentConfig.Topic.UserLimit)
 				if e != nil {
 					l.Error("GetUserOpenIDPublish", zap.Error(e), zap.String("app_no", app.AppNo), zap.Any("req", req))
 				}
@@ -188,13 +189,13 @@ func (a *aggregateService) GetRedirectUrl(ctx context.Context, req *public.Aggre
 	if err := req.Validate(); err != nil {
 		return "", err
 	}
-	if global.Cfg.Payment.IsTest() && req.FilterAccountNo == "" && req.OrderNo == "T1772159917" {
+	if a.config.Env.IsTest() && req.FilterAccountNo == "" && req.OrderNo == "T1772159917" {
 		req.FilterAccountNo = "P4966c7e946c00,P6b5e44d8e7c00"
 	}
-	if global.Cfg.Payment.IsTest() && req.FilterAccountNo == "" && req.OrderNo == "T17721599111" {
+	if a.config.Env.IsTest() && req.FilterAccountNo == "" && req.OrderNo == "T17721599111" {
 		req.FilterAccountNo = "P4966c7e946c00"
 	}
-	aggregateToken, err := getAggregateToken(req.Token)
+	aggregateToken, err := getAggregateToken(req.Token, a.config.Plugin.PaymentConfig)
 	if err != nil {
 		return "", errors2.NewError(errors2.ErrCodeInvalidParam, "token无效")
 	}
@@ -255,7 +256,7 @@ func (a *aggregateService) getAccount(ctx context.Context, req *public.Aggregate
 
 func (a *aggregateService) buildRedirectUrl(ctx context.Context, req *public.AggregateRedirectUrlRequest, app *model.Application, accountDetail *entity.PaymentAccount, basePath string) (string, error) {
 	callbackUrl := ""
-	u, err := getWebBaseUrl(app)
+	u, err := getWebBaseUrl(app, a.config.Plugin.PaymentConfig)
 	if err != nil {
 		return "", errors2.WrapError(errors2.ErrCodeInvalidParam, "web域名格式错误:", err)
 	}
@@ -286,7 +287,7 @@ func (a *aggregateService) Payment(ctx context.Context, req *public.AggregateOrd
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	aggregateToken, err := getAggregateToken(req.Token)
+	aggregateToken, err := getAggregateToken(req.Token, a.config.Plugin.PaymentConfig)
 	if err != nil {
 		l.Error("AggregatePayment", zap.Error(err), zap.Any("token", req))
 		return nil, errors2.NewError(errors2.ErrCodeInvalidParam, "token无效")
@@ -306,7 +307,7 @@ func (a *aggregateService) Payment(ctx context.Context, req *public.AggregateOrd
 		l.Error("AggregatePayment", zap.Error(err), zap.Any("req", req))
 		return nil, err
 	}
-	callbackUrl, err := getSelfCallbackUrl(appInfo, account, order.Order.OrderNo, notify)
+	callbackUrl, err := getSelfCallbackUrl(appInfo, account, order.Order.OrderNo, notify, a.config.Plugin.PaymentConfig)
 	r, _, err := a.domainPayment.Payment(ctx, nil, order, appInfo, account, callbackUrl)
 	if err != nil {
 		l.Error("AggregatePayment", zap.Error(err), zap.Any("req", req))
@@ -343,7 +344,7 @@ func (a *aggregateService) buildPayment(app *model.Application, req *public.Aggr
 		MchNo:          app.MchNo,
 		RequestID:      req.RequestID,
 	}
-	u, err := getNotifyUrl(app)
+	u, err := getNotifyUrl(app, a.config.Plugin.PaymentConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +359,7 @@ func (a *aggregateService) buildPayment(app *model.Application, req *public.Aggr
 
 func (a *aggregateService) Query(ctx context.Context, token string, orderNo string) (*public.PaymentOrderDetail, error) {
 	l := log.WithCtx(ctx)
-	aggregateToken, err := getAggregateToken(token)
+	aggregateToken, err := getAggregateToken(token, a.config.Plugin.PaymentConfig)
 	if err != nil {
 		l.Error("AggregatePaymentQuery", zap.Error(err), zap.Any("token", token), zap.String("orderNo", orderNo))
 		return nil, errors2.NewError(errors2.ErrCodeInvalidParam, "token无效")
@@ -381,9 +382,9 @@ func (a *aggregateService) Query(ctx context.Context, token string, orderNo stri
 	return buildPaymentOrderDetail(order), nil
 }
 
-func getAggregateToken(token string) (*dto.AggregateToken, error) {
+func getAggregateToken(token string, cfg config2.Config) (*dto.AggregateToken, error) {
 	var aggregateToken *dto.AggregateToken
-	str, err := utils.AesGCMDecryptHex(token, []byte(global.Cfg.Payment.Salt))
+	str, err := utils.AesGCMDecryptHex(token, []byte(cfg.Salt))
 	if err != nil {
 		return nil, errors2.NewError(errors2.ErrCodeInvalidParam, "token无效")
 	}
@@ -394,16 +395,16 @@ func getAggregateToken(token string) (*dto.AggregateToken, error) {
 	return aggregateToken, nil
 }
 
-func genAggregateToken(req dto.AggregateToken) (string, error) {
+func genAggregateToken(req dto.AggregateToken, cfg config2.Config) (string, error) {
 	by, _ := json.Marshal(req)
-	str, err := utils.AesGCMEncryptHex(by, []byte(global.Cfg.Payment.Salt))
+	str, err := utils.AesGCMEncryptHex(by, []byte(cfg.Salt))
 	if err != nil {
 		return "", errors2.NewError(errors2.ErrCodeInvalidParam, "token无效")
 	}
 	return str, nil
 }
 
-func getNotifyUrl(appInfo *model.Application) (*url.URL, error) {
+func getNotifyUrl(appInfo *model.Application, cfg config2.Config) (*url.URL, error) {
 	var parse *url.URL
 	var err error
 	if appInfo.IsCustomerDomain == 1 && appInfo.CustomerDomain != "" {
@@ -411,9 +412,9 @@ func getNotifyUrl(appInfo *model.Application) (*url.URL, error) {
 		if err != nil {
 			return nil, errors2.WrapError(errors2.ErrCodeInvalidParam, "构建支付回调地址失败", err)
 		}
-		parse = parse.JoinPath(global.Cfg.Payment.ProxyNotifyPrefix)
+		parse = parse.JoinPath(cfg.ProxyNotifyPrefix)
 	} else {
-		parse, err = url.Parse(global.Cfg.Payment.ApiHost)
+		parse, err = url.Parse(cfg.ApiHost)
 		if err != nil {
 			return nil, errors2.WrapError(errors2.ErrCodeInvalidParam, "构建支付回调地址失败", err)
 		}
@@ -421,8 +422,8 @@ func getNotifyUrl(appInfo *model.Application) (*url.URL, error) {
 	return parse, nil
 }
 
-func getSelfCallbackUrl(appInfo *model.Application, account *entity.PaymentAccount, orderNO string, notify string) (string, error) {
-	parse, err := getNotifyUrl(appInfo)
+func getSelfCallbackUrl(appInfo *model.Application, account *entity.PaymentAccount, orderNO string, notify string, cfg config2.Config) (string, error) {
+	parse, err := getNotifyUrl(appInfo, cfg)
 	if err != nil {
 		return "", err
 	}
@@ -434,11 +435,11 @@ func getSelfCallbackUrl(appInfo *model.Application, account *entity.PaymentAccou
 	return parse.String(), nil
 }
 
-func getWebBaseUrl(app *model.Application) (*url.URL, error) {
-	if global.Cfg.Payment.WebHost == "" {
+func getWebBaseUrl(app *model.Application, config config2.Config) (*url.URL, error) {
+	if config.WebHost == "" {
 		return nil, errors2.NewError(errors2.ErrCodeInvalidParam, "未配置web域名")
 	}
-	u, err := url.Parse(global.Cfg.Payment.WebHost)
+	u, err := url.Parse(config.WebHost)
 	if err != nil {
 		return nil, errors2.NewError(errors2.ErrCodeInvalidParam, fmt.Sprintf("web域名格式错误: %s", err.Error()))
 	}
@@ -447,7 +448,7 @@ func getWebBaseUrl(app *model.Application) (*url.URL, error) {
 		if err != nil {
 			return nil, errors2.WrapError(errors2.ErrCodeInvalidParam, "web域名格式错误:", err)
 		}
-		u = u.JoinPath(global.Cfg.Payment.ProxyNotifyPrefix)
+		u = u.JoinPath(config.ProxyNotifyPrefix)
 	}
 	return u, nil
 }

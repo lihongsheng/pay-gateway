@@ -49,9 +49,6 @@ func NewTradeRefundService(paymentOrderRepo repo.PaymentOrderRepo, refundRepo re
 	}
 }
 
-// DefaultTradeRefund 包级单例
-var DefaultTradeRefund TradeRefundService
-
 func (t *tradeRefundService) AvailableRefundAmount(ctx context.Context, mchNO string, appNO string, orderNo string) (int64, error) {
 	order, err := t.paymentOrderRepo.GetOrderWithCache(ctx, public.QueryPaymentRequest{
 		OrderNo: orderNo,

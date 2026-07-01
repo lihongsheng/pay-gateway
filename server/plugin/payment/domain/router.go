@@ -1,30 +1,15 @@
 package domain
 
 import (
-  "context"
-  "github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
-  "github.com/lihongsheng/pay-gateway/plugin/payment/dto"
-  "github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
-  "github.com/lihongsheng/pay-gateway/plugin/payment/enum"
-  "github.com/lihongsheng/pay-gateway/plugin/payment/errors"
-  "github.com/lihongsheng/pay-gateway/plugin/payment/log"
-  t "github.com/lihongsheng/pay-gateway/plugin/payment/repo"
-  "github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-  paySdk "github.com/lihongsheng/payment-sdk"
-  enum2 "github.com/lihongsheng/payment-sdk/enum"
-  "github.com/lihongsheng/payment-sdk/enum/channel"
-  "github.com/lihongsheng/payment-sdk/enum/payment"
-  "go.uber.org/zap"
-  "time"
-)
-"context"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
+	"context"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	paySdk "github.com/lihongsheng/payment-sdk"
 	enum2 "github.com/lihongsheng/payment-sdk/enum"
 	"github.com/lihongsheng/payment-sdk/enum/channel"
@@ -33,6 +18,7 @@ import (
 	"math/rand"
 	"time"
 )
+
 type Router interface {
 	GetAvailablePayment(ctx context.Context, req *public.QueryCheckoutPaymentMethod, appInfo *model.Application) ([]*entity.PaymentAccount, error)
 	Router(ctx context.Context, apps []*entity.PaymentAccount, appInfo *model.Application, filterAccountNo []string) (available []*entity.PaymentAccount, last *entity.PaymentAccount, err error)
@@ -40,14 +26,15 @@ type Router interface {
 }
 type routerService struct {
 	paymentAccountRepo repo.PaymentAccountRepo
-	routerRepo repo.RouterRepo
-	RuleEngine RuleEngine
+	routerRepo         repo.RouterRepo
+	RuleEngine         RuleEngine
 }
+
 func NewRouterService(paymentAccountRepo repo.PaymentAccountRepo, routerRepo repo.RouterRepo) Router {
 	return &routerService{
 		paymentAccountRepo: paymentAccountRepo,
-		routerRepo:        routerRepo,
-		RuleEngine: NewRuleEngineService(),
+		routerRepo:         routerRepo,
+		RuleEngine:         NewRuleEngineService(),
 	}
 }
 func (s *routerService) Rand(req []*entity.PaymentAccount) (*entity.PaymentAccount, error) {

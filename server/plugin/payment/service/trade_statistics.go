@@ -3,13 +3,15 @@ package service
 import (
 	"context"
 	"errors"
+	system2 "github.com/lihongsheng/pay-gateway/model/system"
+	"github.com/lihongsheng/pay-gateway/repo/system"
 	"time"
 
-	"github.com/lihongsheng/pay-gateway/global"
 	dtoSys "github.com/lihongsheng/pay-gateway/dto/system"
+	"github.com/lihongsheng/pay-gateway/global"
+	event2 "github.com/lihongsheng/pay-gateway/plugin/payment/domain/event"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
-	event2 "github.com/lihongsheng/pay-gateway/plugin/payment/domain/event"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
@@ -32,17 +34,17 @@ type TradeStatisticsService interface {
 	GetAllRequestOrder(ctx context.Context, mchNo string, start, end time.Time) (int64, error)
 }
 type tradeStatisticsService struct {
-	mchRepo            repo.MchRepo
-	appRepo            repo.ApplicationRepo
-	paymentAccountRepo repo.PaymentAccountRepo
-	paymentOrderRepo   repo.PaymentOrderRepo
+	mchRepo             system.MchRepo
+	appRepo             repo.ApplicationRepo
+	paymentAccountRepo  repo.PaymentAccountRepo
+	paymentOrderRepo    repo.PaymentOrderRepo
 	tradeStatisticsRepo repo.TradeStaticsRepo
-	eventRecordRepo    repo.EventRecordRepo
-	statisticsRepo     repo.Statistics
+	eventRecordRepo     repo.EventRecordRepo
+	statisticsRepo      repo.Statistics
 }
 
 func NewTradeStatisticsService(
-	mchRepo repo.MchRepo,
+	mchRepo system.MchRepo,
 	appRepo repo.ApplicationRepo,
 	paymentAccountRepo repo.PaymentAccountRepo,
 	paymentOrderRepo repo.PaymentOrderRepo,
@@ -51,18 +53,15 @@ func NewTradeStatisticsService(
 	statisticsRepo repo.Statistics,
 ) TradeStatisticsService {
 	return &tradeStatisticsService{
-		mchRepo:            mchRepo,
-		appRepo:            appRepo,
-		paymentAccountRepo: paymentAccountRepo,
-		paymentOrderRepo:   paymentOrderRepo,
+		mchRepo:             mchRepo,
+		appRepo:             appRepo,
+		paymentAccountRepo:  paymentAccountRepo,
+		paymentOrderRepo:    paymentOrderRepo,
 		tradeStatisticsRepo: tradeStatisticsRepo,
-		eventRecordRepo:    eventRecordRepo,
-		statisticsRepo:     statisticsRepo,
+		eventRecordRepo:     eventRecordRepo,
+		statisticsRepo:      statisticsRepo,
 	}
 }
-
-// DefaultTradeStatistics 包级单例
-var DefaultTradeStatistics TradeStatisticsService
 
 func (t *tradeStatisticsService) GetAllRequestOrder(ctx context.Context, mchNo string, start, end time.Time) (int64, error) {
 	mch := enum.StatisticsAll
@@ -288,7 +287,7 @@ func (t *tradeStatisticsService) buildTradeStatistic(ctx context.Context, models
 			}
 		}
 	}
-	var mchMap = map[string]*model.Merchant{}
+	var mchMap = map[string]*system2.Merchant{}
 	var mchAppMap = map[string]*model.Application{}
 	var paymentAccountMap = map[string]*model.PaymentAccount{}
 	if len(mchNos) > 0 {

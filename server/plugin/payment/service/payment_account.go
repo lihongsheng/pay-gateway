@@ -3,9 +3,10 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/lihongsheng/pay-gateway/repo/system"
 
-	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	errors2 "github.com/lihongsheng/pay-gateway/plugin/payment/errors"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
@@ -30,12 +31,12 @@ type PaymentAccountService interface {
 
 type paymentAccountService struct {
 	appRepo            repo.ApplicationRepo
-	mchRepo            repo.MchRepo
+	mchRepo            system.MchRepo
 	paymentAccountRepo repo.PaymentAccountRepo
 	db                 *gorm.DB
 }
 
-func NewPaymentAccountService(appRepo repo.ApplicationRepo, mchRepo repo.MchRepo, paymentAccountRepo repo.PaymentAccountRepo, db *gorm.DB) PaymentAccountService {
+func NewPaymentAccountService(appRepo repo.ApplicationRepo, mchRepo system.MchRepo, paymentAccountRepo repo.PaymentAccountRepo, db *gorm.DB) PaymentAccountService {
 	return &paymentAccountService{
 		appRepo:            appRepo,
 		mchRepo:            mchRepo,
@@ -43,9 +44,6 @@ func NewPaymentAccountService(appRepo repo.ApplicationRepo, mchRepo repo.MchRepo
 		db:                 db,
 	}
 }
-
-// DefaultPaymentAccount 包级单例
-var DefaultPaymentAccount PaymentAccountService
 
 func (s *paymentAccountService) GetApplicationAccount(ctx context.Context, appNo string, user *dto.User) ([]*model.PaymentAccount, error) {
 	application, err := s.appRepo.GetByAppNoFormCache(ctx, appNo)
@@ -92,21 +90,13 @@ func (s *paymentAccountService) Save(ctx context.Context, app *dto.PaymentAccoun
 	version := entity.GenAppAccountVersion()
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		err = s.paymentAccountRepo.Save(ctx, app, tx)
-		if err != nil {
-			fmt.Println("-------------------------------------------------------2")
-			return err
-		}
 		return s.appRepo.UpdateApplicationAccountVersion(ctx, app.AppNo, version, tx)
 	})
-
 	if err != nil {
-		fmt.Println("-------------------------------------------------------3")
 		return err
 	}
-
 	err = s.paymentAccountRepo.RefreshAppAccountsCache(ctx, app.AppNo, version)
 	if err != nil {
-		fmt.Println("-------------------------------------------------------4")
 		return err
 	}
 	return nil
@@ -184,7 +174,7 @@ func EntityToParamResponse(app *entity.PaymentAccount) (*dto.PaymentAccountDetai
 		Name:                app.Name,
 		PaymentMethodConfig: BuildPaymentMethod(products, app.PaymentMethod),
 		Remark:              app.Remark,
-		Status:              app.Status,
+		Status:              int(app.Status),
 		ChannelOption:       options,
 		CreatedAt:           app.CreatedAt,
 		ValidateStatus:      app.ValidateStatus,

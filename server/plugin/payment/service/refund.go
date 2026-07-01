@@ -4,11 +4,11 @@ import (
 	"context"
 	errors2 "errors"
 	"fmt"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/config"
 	"github.com/redis/go-redis/v9"
 	"net/http"
 	"time"
 
-	"github.com/lihongsheng/pay-gateway/global"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/event"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
@@ -44,6 +44,7 @@ type refundService struct {
 	event            infrastructure.Event
 	domain           *domain.ServiceGroup
 	redis            *redis.Client
+	config           config.Config
 }
 
 func NewRefundService(
@@ -54,6 +55,7 @@ func NewRefundService(
 	event infrastructure.Event,
 	domain *domain.ServiceGroup,
 	redis *redis.Client,
+	config config.Config,
 ) RefundService {
 	return &refundService{
 		paymentOrderRepo: paymentOrderRepo,
@@ -63,11 +65,9 @@ func NewRefundService(
 		event:            event,
 		domain:           domain,
 		redis:            redis,
+		config:           config,
 	}
 }
-
-// DefaultRefund 包级单例
-var DefaultRefund RefundService
 
 func (s *refundService) NotifyHandler(ctx context.Context, req event.RefundNotifyRetryEvent) error {
 	l := log.WithCtx(ctx)
@@ -182,7 +182,7 @@ func (s *refundService) PublishCallback(ctx context.Context, req *http.Request, 
 	if err != nil {
 		return "", err
 	}
-	err = s.event.Publish(ctx, eventInfo, global.Cfg.Payment.Topic.RefundCallback)
+	err = s.event.Publish(ctx, eventInfo, s.config.Topic.RefundCallback)
 	if err != nil {
 		l.Error("支付回调处理失败", zap.Error(err), zap.String("refundTradeNo", refundTradeNo), zap.String("app_no", appNo), zap.String("mch_no", mchNo))
 		return "", err

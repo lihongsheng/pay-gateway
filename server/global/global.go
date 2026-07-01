@@ -3,20 +3,22 @@
 package global
 
 import (
-  "sync/atomic"
+	"github.com/redis/go-redis/v9"
+	"github.com/spf13/viper"
+	"sync/atomic"
 
-  "github.com/lihongsheng/pay-gateway/config"
+	"github.com/lihongsheng/pay-gateway/config"
 
-  "gorm.io/gorm"
+	"gorm.io/gorm"
 )
 
 var (
-  Cfg   *config.Config
-  DB    *gorm.DB
-  Redis *redis.Client
-
-  // Installed 全局安装状态，安装中间件读取
-  Installed atomic.Bool
+	Cfg   *config.Config
+	DB    *gorm.DB
+	Redis *redis.Client
+	Viper *viper.Viper
+	// Installed 全局安装状态，安装中间件读取
+	Installed atomic.Bool
 )
 
 // SetDB 安装完成 / 启动加载完成后写入

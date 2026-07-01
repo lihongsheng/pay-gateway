@@ -2,11 +2,11 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/service/enter"
 	"go.uber.org/zap"
 
 	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
-	servicePay "github.com/lihongsheng/pay-gateway/plugin/payment/service"
 	"github.com/lihongsheng/pay-gateway/utils/response"
 )
 
@@ -33,7 +33,7 @@ func GetTradeOrder(c *gin.Context) {
 		return
 	}
 
-	detail, err := servicePay.DefaultTradeOrder.Detail(c.Request.Context(), mchNo, appNo, orderNo)
+	detail, err := enter.ServiceApiApp.TradeOrderService.Detail(c.Request.Context(), mchNo, appNo, orderNo)
 	if err != nil {
 		response.Fail(c, err.Error())
 		return
@@ -64,12 +64,12 @@ func SearchTradeOrder(c *gin.Context) {
 		response.Fail(c, err.Error())
 		return
 	}
-	detail, err := servicePay.DefaultTradeOrder.Search(c.Request.Context(), &req)
+	detail, err := enter.ServiceApiApp.TradeOrderService.Search(c.Request.Context(), &req)
 	if err != nil {
 		response.Fail(c, err.Error())
 		return
 	}
-	count, err := servicePay.DefaultTradeOrder.Count(c.Request.Context(), &req)
+	count, err := enter.ServiceApiApp.TradeOrderService.Count(c.Request.Context(), &req)
 	if err != nil {
 		response.Fail(c, err.Error())
 		return
@@ -108,7 +108,7 @@ func TradeRefund(c *gin.Context) {
 		response.Fail(c, err.Error())
 		return
 	}
-	detail, err := servicePay.DefaultTradeRefund.Refund(c.Request.Context(), &req)
+	detail, err := enter.ServiceApiApp.TradeRefundService.Refund(c.Request.Context(), &req)
 	if err != nil {
 		l.Error("refundErr", zap.Error(err), zap.Any("req", req))
 		response.Fail(c, err.Error())
@@ -139,7 +139,7 @@ func TradeRefundDetail(c *gin.Context) {
 		response.Fail(c, "mch_no or trade_no is empty")
 		return
 	}
-	detail, err := servicePay.DefaultTradeRefund.Detail(c.Request.Context(), mchNo, appNO, tradeNo)
+	detail, err := enter.ServiceApiApp.TradeRefundService.Detail(c.Request.Context(), mchNo, appNO, tradeNo)
 	if err != nil {
 		response.Fail(c, err.Error())
 		return
@@ -170,12 +170,12 @@ func TradeRefundSearch(c *gin.Context) {
 		response.Fail(c, err.Error())
 		return
 	}
-	detail, err := servicePay.DefaultTradeRefund.Search(c.Request.Context(), &req)
+	detail, err := enter.ServiceApiApp.TradeRefundService.Search(c.Request.Context(), &req)
 	if err != nil {
 		response.Fail(c, err.Error())
 		return
 	}
-	count, err := servicePay.DefaultTradeRefund.Count(c.Request.Context(), &req)
+	count, err := enter.ServiceApiApp.TradeRefundService.Count(c.Request.Context(), &req)
 	if err != nil {
 		response.Fail(c, err.Error())
 		return
@@ -196,7 +196,7 @@ func GetAvailableRefundAmount(c *gin.Context) {
 		response.Fail(c, "mch_no or order_no is empty")
 		return
 	}
-	amount, err := servicePay.DefaultTradeRefund.AvailableRefundAmount(c.Request.Context(), mchNo, appNo, orderNo)
+	amount, err := enter.ServiceApiApp.TradeRefundService.AvailableRefundAmount(c.Request.Context(), mchNo, appNo, orderNo)
 	if err != nil {
 		response.Fail(c, err.Error())
 		return

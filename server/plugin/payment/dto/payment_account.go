@@ -2,6 +2,7 @@ package dto
 
 import (
 	"errors"
+	"github.com/lihongsheng/payment-sdk/driver/iface"
 	"time"
 
 	"github.com/lihongsheng/payment-sdk/enum/payment"
@@ -10,17 +11,18 @@ import (
 // ---------- 支付账户 DTO ----------
 
 type PaymentAccountCreateRequest struct {
-	ID            int64           `json:"id"`
-	Name          string          `json:"name"  binding:"required"`
-	Remark        string          `json:"remark"`
-	AppNo         string          `json:"app_no"  binding:"required"`
-	MchNo         string          `json:"mch_no"`
-	Channel       string          `json:"channel"  binding:"required"`
-	Status        int64           `json:"status"  binding:"required"`
-	Extend        string          `json:"extend"`
-	PaymentMethod []PaymentMethod `json:"payment_method"  binding:"required"`
-	ChannelConfig string          `json:"channel_config"  binding:"required"`
-	MaxLimit      int64           `json:"max_limit"`
+	ID            int64                `json:"id"`
+	Name          string               `json:"name"  binding:"required"`
+	Remark        string               `json:"remark"`
+	AppNo         string               `json:"app_no"  binding:"required"`
+	MchNo         string               `json:"mch_no"`
+	Channel       string               `json:"channel"  binding:"required"`
+	Status        int64                `json:"status"  binding:"required"`
+	Extend        string               `json:"extend"`
+	PaymentMethod []PaymentMethod      `json:"payment_method"  binding:"required"`
+	ChannelOption *iface.ChannelOption `json:"channel_option"`
+	ChannelConfig string               `json:"channel_config"  binding:"required"`
+	MaxLimit      int64                `json:"max_limit"`
 }
 
 func (c PaymentAccountCreateRequest) Validate() error {
@@ -96,6 +98,7 @@ type PaymentAccountDetail struct {
 	Extend              string                `json:"extend"`
 	ChannelConfig       string                `json:"channel_config"`
 	PaymentMethodConfig []PaymentMethodConfig `json:"payment_method_config"`
+	ChannelOption       *iface.ChannelOption  `json:"channel_option"`
 	CreatedAt           time.Time             `json:"created_at"`
 	ValidateStatus      int64                 `json:"validate_status"`
 	MaxLimit            int64                 `json:"max_limit"`

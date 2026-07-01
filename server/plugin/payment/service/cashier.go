@@ -4,19 +4,19 @@ import (
 	"context"
 	errors2 "errors"
 	"fmt"
-	"github.com/lihongsheng/pay-gateway/global"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/config"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/infrastructure"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/redis/go-redis/v9"
 	"github.com/lihongsheng/payment-sdk/enum/payment"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"net/url"
@@ -42,6 +42,7 @@ type cashierService struct {
 	eventPublisher     infrastructure.Event
 	domainPayment      domain.PaymentService
 	redis              *redis.Client
+	config             config.Config
 }
 
 func NewCashierService(
@@ -51,6 +52,7 @@ func NewCashierService(
 	eventPublisher infrastructure.Event,
 	domainPayment domain.PaymentService,
 	redis *redis.Client,
+	config config.Config,
 ) CashierService {
 	return &cashierService{
 		appRepo:            appRepo,
@@ -59,6 +61,7 @@ func NewCashierService(
 		eventPublisher:     eventPublisher,
 		domainPayment:      domainPayment,
 		redis:              redis,
+		config:             config,
 	}
 }
 
@@ -67,7 +70,7 @@ var DefaultCashier CashierService
 
 func (s *cashierService) Query(ctx context.Context, req *public.CashierQueryOrder) (*public.PaymentOrderDetail, error) {
 	l := log.WithCtx(ctx)
-	aggregateToken, err := getAggregateToken(req.Token)
+	aggregateToken, err := getAggregateToken(req.Token, s.config)
 	if err != nil {
 		l.Error("cashierQuery", zap.Error(err), zap.Any("token", req))
 		return nil, err
@@ -128,7 +131,7 @@ func (s *cashierService) Create(ctx context.Context, req *public.CashierCreateOr
 	}
 	token, err := genAggregateToken(dto.AggregateToken{
 		AppNo: appInfo.AppNo,
-	})
+	}, s.config)
 	if err != nil {
 		return nil, errors.NewError(errors.ErrCodeInvalidParam, "token无效")
 	}
@@ -149,7 +152,7 @@ func (s *cashierService) Create(ctx context.Context, req *public.CashierCreateOr
 		}
 		eventInfo := payOrder.GetEvents()
 		if eventInfo != nil {
-			eventErr := s.eventPublisher.Publish(ctx, eventInfo, global.Cfg.Payment.Topic.PaymentStatus)
+			eventErr := s.eventPublisher.Publish(ctx, eventInfo, s.config.Topic.PaymentStatus)
 			if eventErr != nil {
 				l.Error("发布订单状态失败", zap.Error(eventErr), zap.Any("event", eventInfo))
 			}
@@ -170,7 +173,7 @@ func (s *cashierService) Create(ctx context.Context, req *public.CashierCreateOr
 }
 
 func (s *cashierService) genOpenUrl(req *public.CashierCreateOrder, appInfo *model.Application, token string) (string, error) {
-	u, err := getWebBaseUrl(appInfo)
+	u, err := getWebBaseUrl(appInfo, s.config)
 	if err != nil {
 		return "", err
 	}
@@ -235,7 +238,7 @@ func (s *cashierService) buildPaymentOrder(req *public.CashierCreateOrder, app *
 		}
 	}
 	if result.RedirectURL == "" {
-		u, err := getNotifyUrl(app)
+		u, err := getNotifyUrl(app, s.config)
 		if err != nil {
 			return nil, err
 		}
@@ -255,7 +258,7 @@ func (s *cashierService) Payment(ctx context.Context, req *public.CashierPayment
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	aggregateToken, err := getAggregateToken(req.Token)
+	aggregateToken, err := getAggregateToken(req.Token, s.config)
 	if err != nil {
 		l.Error("cashierPayment", zap.Error(err), zap.Any("token", req))
 		return nil, errors.NewError(errors.ErrCodeInvalidParam, "token无效")
@@ -293,7 +296,7 @@ func (s *cashierService) Payment(ctx context.Context, req *public.CashierPayment
 			RedirectURL: payOrder.RedirectURL,
 		}, nil
 	}
-	callbackUrl, err := getSelfCallbackUrl(appInfo, account, req.OrderNo, enum.PaymentNotify)
+	callbackUrl, err := getSelfCallbackUrl(appInfo, account, req.OrderNo, enum.PaymentNotify, s.config)
 	if err != nil {
 		return nil, err
 	}

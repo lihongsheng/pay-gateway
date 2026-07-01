@@ -2,7 +2,7 @@
 <template>
   <div class="system-dashboard">
     <!-- 全局时间选择器 - 放在最上方 -->
-    <el-card shadow="hover" class="date-range-card">
+    <el-card shadow="never" class="date-range-card">
       <div class="global-date-range">
         <span class="date-label">统计时间：</span>
         <el-date-picker
@@ -25,7 +25,7 @@
     <!-- 头部统计卡片 -->
     <el-row :gutter="20" class="stat-cards">
       <el-col :span="6" v-for="stat in statistics" :key="stat.label">
-        <el-card shadow="hover" class="stat-card">
+        <el-card shadow="never" class="stat-card">
           <div class="stat-content">
             <div class="stat-label">{{ stat.label }}</div>
             <div class="stat-value">{{ stat.value }}</div>
@@ -50,7 +50,7 @@
     <!-- 图表区域 - 第一行 -->
     <el-row :gutter="20" class="chart-row">
       <el-col :span="12">
-        <el-card shadow="hover" class="chart-card">
+        <el-card shadow="never" class="chart-card">
           <template #header>
             <div class="card-header">
               <span class="title">近7日成功支付金额趋势</span>
@@ -63,7 +63,7 @@
         </el-card>
       </el-col>
       <el-col :span="12">
-        <el-card shadow="hover" class="chart-card">
+        <el-card shadow="never" class="chart-card">
           <template #header>
             <div class="card-header">
               <span class="title">近7日成功支付笔数趋势</span>
@@ -80,7 +80,7 @@
     <!-- 图表区域 - 第二行 (商户应用对比) -->
     <el-row :gutter="20" class="chart-row">
       <el-col :span="24">
-        <el-card shadow="hover" class="chart-card">
+        <el-card shadow="never" class="chart-card">
           <template #header>
             <div class="card-header">
               <span class="title">商户交易数据</span>
@@ -131,7 +131,7 @@
     </el-row>
 
     <!-- 数据表格 - 带高级搜索 -->
-    <el-card shadow="hover" class="table-card">
+    <el-card shadow="never" class="table-card">
       <template #header>
         <div class="card-header">
           <span class="title">交易明细</span>
@@ -288,7 +288,7 @@
         </el-table-column>
       </el-table>
 
-      <div class="table-footer">
+      <div class="pagination-wrap">
         <el-pagination
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
@@ -962,13 +962,11 @@ onMounted(async () => {
 
 <style scoped lang="scss">
 .system-dashboard {
-  padding: 20px;
-  background-color: #f5f7fa;
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 
   .date-range-card {
-    margin-bottom: 20px;
-
     .global-date-range {
       display: flex;
       align-items: center;
@@ -987,7 +985,6 @@ onMounted(async () => {
   }
 
   .stat-cards {
-    margin-bottom: 20px;
   }
 
   .stat-card {
@@ -1051,7 +1048,6 @@ onMounted(async () => {
   }
 
   .chart-row {
-    margin-bottom: 20px;
   }
 
   .chart-card {
@@ -1143,8 +1139,8 @@ onMounted(async () => {
       font-size: 12px;
     }
 
-    .table-footer {
-      margin-top: 20px;
+    .pagination-wrap {
+      margin-top: 16px;
       display: flex;
       justify-content: flex-end;
     }

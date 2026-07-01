@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"github.com/lihongsheng/pay-gateway/repo/system"
 
 	"github.com/lihongsheng/pay-gateway/plugin/payment/dto"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
@@ -20,18 +21,15 @@ type ApplicationService interface {
 
 type applicationService struct {
 	appRepo repo.ApplicationRepo
-	mchRepo repo.MchRepo
+	mchRepo system.MchRepo
 }
 
-func NewApplicationService(appRepo repo.ApplicationRepo, mchRepo repo.MchRepo) ApplicationService {
+func NewApplicationService(appRepo repo.ApplicationRepo, mchRepo system.MchRepo) ApplicationService {
 	return &applicationService{
 		appRepo: appRepo,
 		mchRepo: mchRepo,
 	}
 }
-
-// DefaultApplication 包级单例
-var DefaultApplication ApplicationService
 
 // Get 根据应用ID获取应用信息
 func (s *applicationService) Get(ctx context.Context, appNo string) (*model.Application, error) {

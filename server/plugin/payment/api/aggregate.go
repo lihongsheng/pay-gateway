@@ -2,11 +2,11 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/service/enter"
 
 	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
-	servicePay "github.com/lihongsheng/pay-gateway/plugin/payment/service"
 	"github.com/lihongsheng/pay-gateway/utils/response"
 )
 
@@ -16,7 +16,7 @@ func AggregateRedirectUrl(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	r, err := servicePay.DefaultAggregate.GetRedirectUrl(c.Request.Context(), &req, enum.PaymentBaseIndexPath)
+	r, err := enter.ServiceApiApp.Aggregate.GetRedirectUrl(c.Request.Context(), &req, enum.PaymentBaseIndexPath)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -42,7 +42,7 @@ func AggregateTestRedirectUrl(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, "token is empty", c)
 		return
 	}
-	r, err := servicePay.DefaultAggregate.GetRedirectUrl(c.Request.Context(), &req, enum.PaymentTestPath)
+	r, err := enter.ServiceApiApp.Aggregate.GetRedirectUrl(c.Request.Context(), &req, enum.PaymentTestPath)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -57,7 +57,7 @@ func AggregateTestPayment(c *gin.Context) {
 		return
 	}
 	req.Amount = 1
-	r, err := servicePay.DefaultAggregate.Payment(c.Request.Context(), &req, enum.PaymentTestNotify)
+	r, err := enter.ServiceApiApp.Aggregate.Payment(c.Request.Context(), &req, enum.PaymentTestNotify)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -71,7 +71,7 @@ func AggregateGetUserOpenID(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	r, err := servicePay.DefaultAggregate.GetUserOpenID(c.Request.Context(), req)
+	r, err := enter.ServiceApiApp.Aggregate.GetUserOpenID(c.Request.Context(), req)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -85,7 +85,7 @@ func AggregateGetApplication(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, "token is empty", c)
 		return
 	}
-	r, err := servicePay.DefaultAggregate.GetApplication(c.Request.Context(), token)
+	r, err := enter.ServiceApiApp.Aggregate.GetApplication(c.Request.Context(), token)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -108,7 +108,7 @@ func AggregatePayment(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	r, err := servicePay.DefaultAggregate.Payment(c.Request.Context(), &req, enum.PaymentNotify)
+	r, err := enter.ServiceApiApp.Aggregate.Payment(c.Request.Context(), &req, enum.PaymentNotify)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -127,7 +127,7 @@ func AggregateQuery(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, "order_no is empty", c)
 		return
 	}
-	r, err := servicePay.DefaultAggregate.Query(c.Request.Context(), token, orderNo)
+	r, err := enter.ServiceApiApp.Aggregate.Query(c.Request.Context(), token, orderNo)
 	if err != nil {
 		FailErrMessage(err, c)
 		return

@@ -4,6 +4,7 @@ import (
 	"context"
 	errors2 "errors"
 	"fmt"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/config"
 	"net/http"
 	"time"
 
@@ -12,13 +13,13 @@ import (
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/entity"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/domain/event"
+	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	enum2 "github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/infrastructure"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
-	"github.com/lihongsheng/pay-gateway/plugin/payment/dto/public"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/utils"
 	paySdk "github.com/lihongsheng/payment-sdk"
 	"github.com/lihongsheng/payment-sdk/enum"
@@ -50,6 +51,7 @@ type paymentService struct {
 	notifyRepo         repo.NotifyRepo
 	event              infrastructure.Event
 	domain             *domain.ServiceGroup
+	config             config.Config
 }
 
 func NewPaymentService(
@@ -59,6 +61,7 @@ func NewPaymentService(
 	notifyRepo repo.NotifyRepo,
 	event infrastructure.Event,
 	domain *domain.ServiceGroup,
+	config config.Config,
 ) PaymentService {
 	return &paymentService{
 		paymentOrderRepo:   paymentOrderRepo,
@@ -67,11 +70,9 @@ func NewPaymentService(
 		notifyRepo:         notifyRepo,
 		event:              event,
 		domain:             domain,
+		config:             config,
 	}
 }
-
-// DefaultPayment 包级单例
-var DefaultPayment PaymentService
 
 func (s *paymentService) GenPaymentExpireRecord(ctx context.Context, req event.PaymentOrderStatusEvent) error {
 	if !(req.NewStatus == payment.Status_Pending || req.NewStatus == payment.Status_TempFailed) {
@@ -235,7 +236,7 @@ func (s *paymentService) PublishCallback(ctx context.Context, req *http.Request,
 	if err != nil {
 		return "", err
 	}
-	err = s.event.Publish(ctx, eventInfo, global.Cfg.Payment.Topic.PaymentCallback)
+	err = s.event.Publish(ctx, eventInfo, s.config.Topic.PaymentCallback)
 	if err != nil {
 		l.Error("支付回调处理失败", zap.Error(err), zap.String("trade_no", orderNo), zap.String("app_no", appNo), zap.String("mch_no", mchNo))
 		return "", err
@@ -386,7 +387,7 @@ func (s *paymentService) Payment(ctx context.Context, req *public.PaymentOrder, 
 		}
 		account = accounts[0]
 	}
-	callbackUrl, err := getSelfCallbackUrl(appInfo, account, req.Order.OrderNo, enum2.PaymentNotify)
+	callbackUrl, err := getSelfCallbackUrl(appInfo, account, req.Order.OrderNo, enum2.PaymentNotify, s.config)
 	if err != nil {
 		return nil, err
 	}

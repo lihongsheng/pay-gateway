@@ -19,33 +19,8 @@ type Config struct {
 	Install       Install         `mapstructure:"install"       json:"install"       yaml:"install"`
 	Upload        Upload          `mapstructure:"upload"        json:"upload"        yaml:"upload"`
 	Observability Observability   `mapstructure:"observability" json:"observability" yaml:"observability"`
-	Payment       PaymentConfig   `mapstructure:"payment"       json:"payment"       yaml:"payment"`
-}
-
-// PaymentConfig 支付插件配置
-type PaymentConfig struct {
-	ApiHost           string      `mapstructure:"api_host"             json:"api_host"             yaml:"api_host"`
-	ProxyNotifyPrefix string      `mapstructure:"proxy_notify_prefix"  json:"proxy_notify_prefix"  yaml:"proxy_notify_prefix"`
-	WebHost           string      `mapstructure:"web_host"             json:"web_host"             yaml:"web_host"`
-	Salt              string      `mapstructure:"salt"                 json:"salt"                 yaml:"salt"`
-	Env               string      `mapstructure:"env"                  json:"env"                  yaml:"env"`
-	Topic             KafkaTopic  `mapstructure:"topic"                json:"topic"                yaml:"topic"`
-}
-
-// IsTest 是否测试环境
-func (c PaymentConfig) IsTest() bool {
-	return c.Env == "test" || c.Env == "dev"
-}
-
-// KafkaTopic Kafka topic 配置
-type KafkaTopic struct {
-	PaymentStatus       string `mapstructure:"payment_status"        json:"payment_status"        yaml:"payment_status"`
-	PaymentCallback     string `mapstructure:"payment_callback"      json:"payment_callback"      yaml:"payment_callback"`
-	RefundCallback      string `mapstructure:"refund_callback"       json:"refund_callback"       yaml:"refund_callback"`
-	RefundStatus        string `mapstructure:"refund_status"         json:"refund_status"         yaml:"refund_status"`
-	UserLimit           string `mapstructure:"user_limit"            json:"user_limit"            yaml:"user_limit"`
-	PaymentNotifyRetry  string `mapstructure:"payment_notify_retry"  json:"payment_notify_retry"  yaml:"payment_notify_retry"`
-	RefundNotifyRetry   string `mapstructure:"refund_notify_retry"   json:"refund_notify_retry"   yaml:"refund_notify_retry"`
+	Plugin        Plugin          `mapstructure:"plugin"       json:"plugin"       yaml:"plugin"`
+	Env           Env             `mapstructure:"env" json:"env" yaml:"env"`
 }
 
 type Upload struct {
@@ -193,19 +168,19 @@ var (
 )
 
 // Load 读取 config.yaml
-func Load(path string) (*Config, error) {
+func Load(path string) (*Config, *viper.Viper, error) {
 	cfgPath = path
 	V = viper.New()
 	V.SetConfigFile(path)
 	V.SetConfigType("yaml")
 	if err := V.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("read config %s: %w", path, err)
+		return nil, nil, fmt.Errorf("read config %s: %w", path, err)
 	}
 	c := &Config{}
 	if err := V.Unmarshal(c); err != nil {
-		return nil, fmt.Errorf("unmarshal config: %w", err)
+		return nil, nil, fmt.Errorf("unmarshal config: %w", err)
 	}
-	return c, nil
+	return c, V, nil
 }
 
 // Path 返回当前配置文件路径
@@ -223,4 +198,27 @@ func Save(c *Config) error {
 	V.Set("upload", c.Upload)
 	V.Set("observability", c.Observability)
 	return V.WriteConfig()
+}
+
+type Env string
+
+const (
+	EnvLocal = "local"
+	EnvTest  = "test"
+	EnvProd  = "prod"
+)
+
+func (e Env) IsLocal() bool {
+	return e == EnvLocal
+}
+func (e Env) IsTest() bool {
+	return e == EnvTest
+}
+
+func (e Env) IsProd() bool {
+	return e == EnvProd
+}
+
+func (e Env) String() string {
+	return string(e)
 }

@@ -1,141 +1,52 @@
 <!-- src/views/payment/trade/index.vue -->
 <template>
   <div class="page-wrap">
-    <!-- 页面标题 -->
-    <div class="flex justify-between items-center mb-4">
-      <h2 class="text-lg font-bold">支付订单管理</h2>
-    </div>
-
-    <!-- 搜索区域 -->
-    <el-card shadow="never" class="mb-4">
+    <!-- 搜索栏 -->
+    <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchInfo" class="search-form">
-        <el-row :gutter="10">
-          <el-col :span="6">
-            <el-form-item label="商户">
-              <el-select
-                  v-model="searchInfo.mch_no"
-                  filterable
-                  placeholder="请选择商户"
-                  clearable
-                  remote
-                  :remote-method="remoteSearchMchVenuer"
-                  :loading="venuerMchLoading"
-                  @change="handleMchNoChange"
-              >
-                <el-option
-                    v-for="item in venuerMchList"
-                    :key="item.mch_no"
-                    :label="item.mch_no + ' (' + item.mch_name + ')'"
-                    :value="item.mch_no"
-                >
-                  <span>{{ item.mch_no }}</span>
-                  <span style="float: right; color: #8492a6; font-size: 13px">{{ item.mch_name }}</span>
-                </el-option>
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="应用编号">
-              <el-select
-                  v-model="searchInfo.app_no"
-                  filterable
-                  placeholder="请选择应用编号"
-                  clearable
-                  remote
-                  :remote-method="remoteSearchAppVenuer"
-                  :loading="venuerAppLoading"
-                  @change="handleAppNoChange"
-              >
-                <el-option
-                    v-for="item in venuerAppList"
-                    :key="item.app_no"
-                    :label="item.app_no + ' (' + item.app_name + ')'"
-                    :value="item.app_no"
-                >
-                  <span>{{ item.app_no }}</span>
-                  <span style="float: right; color: #8492a6; font-size: 13px">{{ item.app_name }}</span>
-                </el-option>
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="订单号">
-              <el-input
-                  v-model="searchInfo.order_no"
-                  placeholder="请输入订单号"
-                  clearable
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="支付单号">
-              <el-input
-                  v-model="searchInfo.trade_no"
-                  placeholder="请输入支付单号"
-                  clearable
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="10">
-          <el-col :span="6">
-            <el-form-item label="状态">
-              <el-select
-                  v-model="searchInfo.status"
-                  placeholder="请选择状态"
-                  clearable
-                  class="w-full"
-              >
-                <el-option
-                    v-for="(label, value) in statusOptions"
-                    :key="value"
-                    :label="label"
-                    :value="value"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="开始时间">
-              <el-date-picker
-                  v-model="searchInfo.start_time"
-                  type="datetime"
-                  placeholder="选择开始时间"
-                  value-format="YYYY-MM-DDTHH:mm:ssZ"
-                  format="YYYY-MM-DD HH:mm:ss"
-                  class="w-full"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="结束时间">
-              <el-date-picker
-                  v-model="searchInfo.end_time"
-                  type="datetime"
-                  placeholder="选择结束时间"
-                  value-format="YYYY-MM-DDTHH:mm:ssZ"
-                  format="YYYY-MM-DD HH:mm:ss"
-                  class="w-full"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6" class="text-right">
-            <el-button type="primary" @click="onSubmit">查询</el-button>
-            <el-button @click="onReset">重置</el-button>
-          </el-col>
-        </el-row>
+        <el-form-item label="商户">
+          <el-select v-model="searchInfo.mch_no" filterable placeholder="请选择商户" clearable remote :remote-method="remoteSearchMchVenuer" :loading="venuerMchLoading" style="width:220px" @change="handleMchNoChange">
+            <el-option v-for="item in venuerMchList" :key="item.mch_no" :label="item.mch_no + ' (' + item.mch_name + ')'" :value="item.mch_no">
+              <span>{{ item.mch_no }}</span>
+              <span style="float: right; color: #8492a6; font-size: 13px">{{ item.mch_name }}</span>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="应用编号">
+          <el-select v-model="searchInfo.app_no" filterable placeholder="请选择应用编号" clearable remote :remote-method="remoteSearchAppVenuer" :loading="venuerAppLoading" style="width:220px" @change="handleAppNoChange">
+            <el-option v-for="item in venuerAppList" :key="item.app_no" :label="item.app_no + ' (' + item.app_name + ')'" :value="item.app_no">
+              <span>{{ item.app_no }}</span>
+              <span style="float: right; color: #8492a6; font-size: 13px">{{ item.app_name }}</span>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="订单号">
+          <el-input v-model="searchInfo.order_no" placeholder="请输入订单号" clearable style="width:180px" @keyup.enter="onSubmit" @clear="onSubmit" />
+        </el-form-item>
+        <el-form-item label="支付单号">
+          <el-input v-model="searchInfo.trade_no" placeholder="请输入支付单号" clearable style="width:180px" @keyup.enter="onSubmit" @clear="onSubmit" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="searchInfo.status" placeholder="请选择状态" clearable style="width:120px">
+            <el-option v-for="(label, value) in statusOptions" :key="value" :label="label" :value="value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="开始时间">
+          <el-date-picker v-model="searchInfo.start_time" type="datetime" placeholder="选择开始时间" value-format="YYYY-MM-DDTHH:mm:ssZ" format="YYYY-MM-DD HH:mm:ss" style="width:200px" />
+        </el-form-item>
+        <el-form-item label="结束时间">
+          <el-date-picker v-model="searchInfo.end_time" type="datetime" placeholder="选择结束时间" value-format="YYYY-MM-DDTHH:mm:ssZ" format="YYYY-MM-DD HH:mm:ss" style="width:200px" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="onSubmit"><el-icon><Search /></el-icon>搜索</el-button>
+          <el-button @click="onReset">重置</el-button>
+        </el-form-item>
       </el-form>
     </el-card>
 
-    <!-- 表格区域 -->
-    <el-card shadow="never">
-      <el-table
-          :data="tableData"
-          style="width: 100%"
-          row-key="trade_no"
-          v-loading="loading"
-          border
-      >
+    <!-- 数据栏 -->
+    <el-card shadow="never" class="table-card">
+      <el-table :data="tableData" row-key="trade_no" v-loading="loading" stripe border>
         <el-table-column prop="trade_no" label="交易号" min-width="150" show-overflow-tooltip />
         <el-table-column prop="order_no" label="订单号" min-width="150" show-overflow-tooltip />
         <el-table-column prop="mch_no" label="商户编号" min-width="120" show-overflow-tooltip />
@@ -144,76 +55,47 @@
         <el-table-column prop="app_name" label="应用名称" min-width="120" show-overflow-tooltip />
         <el-table-column prop="account_no" label="支付账户" min-width="120" show-overflow-tooltip />
         <el-table-column prop="account_name" label="账户名称" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="payment_method" label="支付方式" width="100">
+        <el-table-column label="支付方式" width="100">
           <template #default="{ row }">
             <el-tag size="small">{{ getPaymentMethodText(row.payment_method) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="payment_product" label="支付产品" width="100">
+        <el-table-column label="支付产品" width="100">
           <template #default="{ row }">
             <el-tag size="small" type="info">{{ getPaymentProductText(row.payment_product) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="amount" label="金额" width="100">
+        <el-table-column label="金额" width="100" align="right">
           <template #default="{ row }">
-            <span class="font-bold text-green-600">¥{{ (row.amount / 100).toFixed(2) }}</span>
+            <span style="color:#67C23A;font-weight:500">¥{{ (row.amount / 100).toFixed(2) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column label="状态" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="getStatusTagType(row.status)" size="small">
+            <el-tag :type="getStatusTagType(row.status)" size="small" effect="dark">
               {{ getStatusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="subject" label="商品标题" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="created_at" label="创建时间" width="180">
-          <template #default="{ row }">
-            {{ formatDate(row.created_at) }}
-          </template>
+        <el-table-column label="创建时间" width="170" show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column prop="order_time" label="下单时间" width="180">
-          <template #default="{ row }">
-            {{ formatDate(row.order_time) }}
-          </template>
+        <el-table-column label="下单时间" width="170" show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDate(row.order_time) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <div class="flex flex-wrap gap-1">
-              <el-button
-                  size="small"
-                  type="primary"
-                  link
-                  @click="viewOrderDetail(row)"
-              >
-                查看详情
-              </el-button>
-              <el-button
-                  v-if="row.status === 3 || row.status === 7"
-                  size="small"
-                  type="warning"
-                  link
-                  @click="openRefundDialog(row)"
-              >
-                退款
-              </el-button>
-            </div>
+            <el-button size="small" type="primary" link @click="viewOrderDetail(row)">详情</el-button>
+            <el-button v-if="row.status === 3 || row.status === 7" v-permission="'trade:refund'" size="small" type="warning" link @click="openRefundDialog(row)">退款</el-button>
           </template>
         </el-table-column>
       </el-table>
 
-      <!-- 分页 -->
-      <div class="pagination mt-4">
-        <el-pagination
-            background
-            layout="total, sizes, prev, pager, next, jumper"
-            :current-page="page"
-            :page-size="pageSize"
-            :page-sizes="[10, 20, 30, 50]"
-            :total="total"
-            @current-change="handleCurrentChange"
-            @size-change="handleSizeChange"
-        />
+      <div class="pagination-wrap">
+        <el-pagination background layout="total,sizes,prev,pager,next,jumper"
+                       :total="total" v-model:current-page="page" v-model:page-size="pageSize"
+                       :page-sizes="[10, 20, 50, 100]" @current-change="handleCurrentChange" @size-change="handleSizeChange" />
       </div>
     </el-card>
 
@@ -288,6 +170,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import { tradeList, tradeRefund, refundAmount } from '@/api/payment'
 import { mchList } from '@/api/system'
 import { appList } from '@/api/payment'
@@ -752,21 +635,10 @@ const formatISO8601 = (date) => {
 </script>
 
 <style scoped>
-.page-wrap {
-  padding: 20px;
-}
-
-.dialog-footer {
-  text-align: right;
-}
-
-:deep(.el-table .el-table__row .cell) {
-  word-break: break-all;
-}
-
-.pagination {
-  display: flex;
-  justify-content: center;
-  margin-top: 20px;
-}
+.page-wrap { display: flex; flex-direction: column; gap: 12px; }
+.search-card { }
+.search-form { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.search-form .el-form-item { margin-bottom: 0; }
+.table-card { }
+.pagination-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
 </style>

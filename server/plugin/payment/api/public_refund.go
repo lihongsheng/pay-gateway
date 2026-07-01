@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/lihongsheng/pay-gateway/plugin/payment/service/enter"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -10,7 +11,6 @@ import (
 	"github.com/lihongsheng/pay-gateway/plugin/payment/enum"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/errors"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/log"
-	servicePay "github.com/lihongsheng/pay-gateway/plugin/payment/service"
 	"github.com/lihongsheng/pay-gateway/plugin/payment/utils"
 	"github.com/lihongsheng/pay-gateway/utils/response"
 )
@@ -22,7 +22,7 @@ func Refund(c *gin.Context) {
 		return
 	}
 	req.RefundFrom = enum.RefundFrom_API
-	resp, err := servicePay.DefaultRefund.Refund(c.Request.Context(), &req)
+	resp, err := enter.ServiceApiApp.RefundService.Refund(c.Request.Context(), &req)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -36,7 +36,7 @@ func QueryRefund(c *gin.Context) {
 		FailMessage(errors.ErrCodeInvalidParam, err.Error(), c)
 		return
 	}
-	resp, err := servicePay.DefaultRefund.Query(c.Request.Context(), &req)
+	resp, err := enter.ServiceApiApp.RefundService.Query(c.Request.Context(), &req)
 	if err != nil {
 		FailErrMessage(err, c)
 		return
@@ -71,7 +71,7 @@ func RefundCallback(c *gin.Context) {
 		return
 	}
 
-	resp, err := servicePay.DefaultRefund.PublishCallback(c.Request.Context(), c.Request, channel, mchNo, appNo, tradeNo)
+	resp, err := enter.ServiceApiApp.RefundService.PublishCallback(c.Request.Context(), c.Request, channel, mchNo, appNo, tradeNo)
 	if err != nil {
 		l.Error("PublicRefundApiCallback", zap.Error(err), zap.String("mchNo", mchNo), zap.String("appNo", appNo), zap.String("tradeNo", tradeNo))
 		FailErrMessage(err, c)
