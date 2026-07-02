@@ -40,21 +40,21 @@ type MchQueryRequest struct {
 	MchNo    string         `json:"mch_no" form:"mch_no"`     // 编号
 	Status   enum.MchStatus `json:"status" form:"status"`     // 0 停用 1 正常
 	ID       int64          `json:"id" form:"id"`             // 商户ID
-	PageSize int            `json:"limit" form:"limit"`       // 限制数量
-	Page     int            `json:"page" form:"page"`         // 页大小
+	PageSize int            `json:"page_size" form:"page_size"` // 限制数量
+	Page     int            `json:"page" form:"page"`           // 页码
 	IDList   []int64        `json:"id_list" form:"id_list"`   // 商户ID
 	MchNos   []string       `json:"mch_nos" form:"mch_nos"`   // 编号
 }
 
-func (m MchQueryRequest) Validate() error {
+func (m *MchQueryRequest) Validate() error {
 	if m.PageSize <= 0 {
-		return errors.New("页大小不能小于0")
+		m.PageSize = 10
 	}
 	if m.PageSize > 50 {
-		return errors.New("页大小不能大于50")
+		m.PageSize = 50
 	}
 	if m.Page <= 0 {
-		return errors.New("页数不能小于0")
+		m.Page = 1
 	}
 	return nil
 }

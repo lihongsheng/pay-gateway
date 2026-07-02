@@ -3,6 +3,7 @@ package initialize
 import (
 	// 通过空导入触发各插件 init() 自注册
 	_ "github.com/lihongsheng/pay-gateway/plugin/example"
+	_ "github.com/lihongsheng/pay-gateway/plugin/payment"
 
 	"github.com/lihongsheng/pay-gateway/plugin"
 )

@@ -6,8 +6,6 @@ import (
 	"github.com/lihongsheng/pay-gateway/log"
 	repoExampleNote "github.com/lihongsheng/pay-gateway/plugin/example/repo"
 	serviceExampleNote "github.com/lihongsheng/pay-gateway/plugin/example/service"
-	payRepo "github.com/lihongsheng/pay-gateway/plugin/payment/repo"
-	paySvc "github.com/lihongsheng/pay-gateway/plugin/payment/service"
 	repoSys "github.com/lihongsheng/pay-gateway/repo/system"
 	serviceBase "github.com/lihongsheng/pay-gateway/service/base"
 	serviceInstall "github.com/lihongsheng/pay-gateway/service/install"
@@ -49,35 +47,5 @@ func InitDBServices() {
 	serviceBase.Default = serviceBase.NewService(userRepo)
 	// ---------- example plugin service ----------
 	serviceExampleNote.DefaultNote = serviceExampleNote.NewNoteService(noteRepo)
-
-	// ---------- payment plugin repo ----------
-	payMchRepo := payRepo.NewMchRepo(global.DB)
-	payAppRepo := payRepo.NewApplicationRepo(global.DB, global.Redis)
-	payAccountRepo := payRepo.NewPaymentAccountRepo(global.DB, global.Redis)
-	payOrderRepo := payRepo.NewPaymentOrderRepo(global.DB, global.Redis)
-	payRefundRepo := payRepo.NewRefundRepo(global.DB, global.Redis)
-	payRouterRepo := payRepo.NewRouterRepo(global.DB, global.Redis)
-	payTradeStatsRepo := payRepo.NewTradeStaticsRepo(global.DB)
-	payNotifyRepo := payRepo.NewNotifyRepo(global.DB)
-	payEventRepo := payRepo.NewEventRecordRepo(global.DB)
-	payStatsRepo := payRepo.NewStatistics(global.DB)
-
-	// ---------- payment plugin service ----------
-	_ = payMchRepo
-	_ = payAppRepo
-	_ = payAccountRepo
-	_ = payOrderRepo
-	_ = payRefundRepo
-	_ = payRouterRepo
-	_ = payTradeStatsRepo
-	_ = payNotifyRepo
-	_ = payEventRepo
-	_ = payStatsRepo
-	_ = paySvc.DefaultMch // Ensure package is imported
-	// TODO: Wire payment service singletons once service layer is refactored
-	// paySvc.DefaultMch = paySvc.NewMchService(payMchRepo, payAppRepo)
-	// paySvc.DefaultApplication = paySvc.NewApplicationService(payAppRepo, payMchRepo)
-	// ... etc
-
 	log.Info("db services initialized")
 }

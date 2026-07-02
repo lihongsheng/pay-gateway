@@ -6,11 +6,11 @@ captcha:
     drive: ""
 db:
     driver: mysql
-    host:
-    port:
-    username:
-    password:
-    database:
+    host: 127.0.0.1
+    port: 3306
+    username: root
+    password: code_101
+    database: go_payment_admin
     path: ""
     charset: utf8mb4
     max_idle: 0
@@ -41,7 +41,7 @@ observability:
         endpoint: ""
         path: /metrics
 redis:
-    enable: false
+    enable: true
     addr: 127.0.0.1:6379
     password: ""
     db: 0
