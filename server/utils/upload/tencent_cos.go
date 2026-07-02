@@ -1,15 +1,16 @@
 package upload
 
 import (
-  "context"
-  "errors"
-  "fmt"
-  "github.com/lihongsheng/pay-gateway/config"
-  "github.com/lihongsheng/pay-gateway/log"
-  "mime/multipart"
-  "net/http"
-  "net/url"
-  "time"
+	"context"
+	"errors"
+	"fmt"
+	"github.com/lihongsheng/pay-gateway/config"
+	"github.com/lihongsheng/pay-gateway/log"
+	"github.com/tencentyun/cos-go-sdk-v5"
+	"mime/multipart"
+	"net/http"
+	"net/url"
+	"time"
 )
 
 type TencentCOS struct {
@@ -19,7 +20,6 @@ type TencentCOS struct {
 // UploadFile 上传文件到腾讯云 COS，返回访问 URL
 func (t *TencentCOS) UploadFile(ctx context.Context, file *multipart.FileHeader) (string, error) {
 	client := newCosClient(t.Config)
-
 	f, err := file.Open()
 	if err != nil {
 		log.FromContext(ctx).Error("file.Open failed", "err", err.Error())

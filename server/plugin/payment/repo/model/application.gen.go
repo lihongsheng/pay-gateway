@@ -14,7 +14,7 @@ const TableNameApplication = "application"
 type Application struct {
 	ID               int64     `gorm:"column:id;type:int;primaryKey;autoIncrement:true" json:"id"`
 	AppName          string    `gorm:"column:app_name;type:varchar(100);not null;comment:应用名字" json:"app_name"`                     // 应用名字
-	Secret           string    `gorm:"column:secret;type:varchar(32);not null;comment:应用秘密" json:"secret"`                          // 应用秘密
+	Secret           string    `gorm:"column:secret;type:varchar(100);not null;comment:应用秘密" json:"secret"`                          // 应用秘密
 	AppNo            string    `gorm:"column:app_no;type:varchar(100);not null;comment:应用编号" json:"app_no"`                         // 应用编号
 	MchNo            string    `gorm:"column:mch_no;type:varchar(100);not null;comment:商户编号" json:"mch_no"`                         // 商户编号
 	Desc             string    `gorm:"column:desc;type:varchar(255);not null;comment:应用描述" json:"desc"`                             // 应用描述

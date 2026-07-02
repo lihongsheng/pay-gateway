@@ -79,10 +79,6 @@ func (a *CacheWechat) Delete(key string) error {
 }
 
 func (a *WechatUser) GetUserOpenID(ctx context.Context, authCode string, accountDetail *entity.PaymentAccount, app *model.Application, paymentMethod payment.Payment) (string, error) {
-	// 测试后删除
-	if (global.Cfg.Payment.IsTest() || global.Cfg.Payment.IsTest()) && accountDetail.AccountNo == "P6b5df34ad2800" {
-		return "", errors2.NewError(errors2.ErrUserLimit, "限制登录")
-	}
 	var conf wechatConfig.Config
 	err := json.Unmarshal([]byte(accountDetail.ChannelConfig), &conf)
 	if err != nil {

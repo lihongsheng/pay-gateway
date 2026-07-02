@@ -144,7 +144,7 @@ async function loadList() {
       mch_name: searchInfo.mch_name || undefined,
       status: searchInfo.status || 0,
       page: page.value,
-      limit: pageSize.value
+      page_size: pageSize.value
     }
     const res = await mchList(params)
     if (res.code === 0) {

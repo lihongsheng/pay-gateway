@@ -70,7 +70,13 @@ type SearchRequest struct {
 	PageSize  int            `json:"page_size" form:"page_size"`
 }
 
-func (q SearchRequest) Validate() error {
+func (q *SearchRequest) Validate() error {
+	if q.Page <= 0 {
+		q.Page = 1
+	}
+	if q.PageSize <= 0 {
+		q.PageSize = 10
+	}
 	if q.MchNo == "" {
 		return errors.New("商户不能为空")
 	}

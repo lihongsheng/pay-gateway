@@ -14,12 +14,12 @@ const TableNamePaymentOrder = "payment_order"
 type PaymentOrder struct {
 	ID                int64     `gorm:"column:id;type:bigint;primaryKey;autoIncrement:true;comment:主键ID" json:"id"`                                                   // 主键ID
 	PaymentAccountNo  string    `gorm:"column:payment_account_no;type:varchar(64);not null;comment:payment_account_no" json:"payment_account_no"`                     // payment_account_no
-	AppNo             string    `gorm:"column:app_no;type:varchar(100);not null;comment:应用编号" json:"app_no"`                                                          // 应用编号
-	MchNo             string    `gorm:"column:mch_no;type:varchar(100);primaryKey;comment:商户编号" json:"mch_no"`                                                        // 商户编号
+	AppNo             string    `gorm:"column:app_no;type:varchar(100);mchAppCreateIndex;not null;comment:应用编号" json:"app_no"`                                                          // 应用编号
+	MchNo             string    `gorm:"column:mch_no;type:varchar(100);mchAppCreateIndex;comment:商户编号" json:"mch_no"`                                                        // 商户编号
 	OrderSubject      string    `gorm:"column:order_subject;type:varchar(255);not null;comment:订单标题" json:"order_subject"`                                            // 订单标题
 	PaymentMethod     string    `gorm:"column:payment_method;type:varchar(60);not null;comment:支付方式：Wechat 微信 | Alipay 支付宝 | 云闪付" json:"payment_method"`              // 支付方式：Wechat 微信 | Alipay 支付宝 | 云闪付
 	PaymentProduct    string    `gorm:"column:payment_product;type:varchar(60);not null;comment:支付产品：H5 | JSAPI | LITE | APP | Qrcode | Card" json:"payment_product"` // 支付产品：H5 | JSAPI | LITE | APP | Qrcode | Card
-	OrderNo           string    `gorm:"column:order_no;type:varchar(64);not null;comment:订单号" json:"order_no"`                                                        // 订单号
+	OrderNo           string    `gorm:"column:order_no;type:varchar(64);orderNoIndex;not null;comment:订单号" json:"order_no"`                                                        // 订单号
 	OutMchTradeNo     string    `gorm:"column:out_mch_trade_no;type:varchar(100);not null;comment:渠道订单号：微信|支付宝" json:"out_mch_trade_no"`                              // 渠道订单号：微信|支付宝
 	TradeNo           string    `gorm:"column:trade_no;type:varchar(100);not null;comment:支付系统交易号" json:"trade_no"`                                                   // 支付系统交易号
 	Device            string    `gorm:"column:device;type:varchar(20);not null;comment:设备" json:"device"`                                                             // 设备
@@ -40,10 +40,10 @@ type PaymentOrder struct {
 	ThirdMsg          string    `gorm:"column:third_msg;type:varchar(100);not null;comment:三方接口返回描述" json:"third_msg"`                                                // 三方接口返回描述
 	UserOpenid        string    `gorm:"column:user_openid;type:varchar(100);not null;comment:三方用户标识" json:"user_openid"`                                              // 三方用户标识
 	NotifyStatus      int64     `gorm:"column:notify_status;type:tinyint;not null;comment:1 已经回调" json:"notify_status"`                                               // 1 已经回调
-	CreatedAt         time.Time `gorm:"column:created_at;type:datetime;primaryKey;default:CURRENT_TIMESTAMP;comment:创建时间" json:"created_at"`                          // 创建时间
+	CreatedAt         time.Time `gorm:"column:created_at;type:datetime;mchAppCreateIndex;default:CURRENT_TIMESTAMP;comment:创建时间" json:"created_at"`                          // 创建时间
 	UpdatedAt         time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP;comment:更新时间" json:"updated_at"`                            // 更新时间
 	Retry             int64     `gorm:"column:retry;type:int;not null;comment:重试次数" json:"retry"`                                                                     // 重试次数
-  PaymentOrderProducts []*PaymentOrderProduct `gorm:"foreignKey:TradeNo;references:TradeNo" json:"payment_order_products"`
+  PaymentOrderProducts []*PaymentOrderProduct `gorm:"foreignKey:OrderNo;references:OrderNo;constraint:false" json:"payment_order_products"`
 }
 
 // TableName PaymentOrder's table name

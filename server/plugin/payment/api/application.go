@@ -111,6 +111,10 @@ func SaveApplication(c *gin.Context) {
 	if user.ISMch() {
 		req.MchNo = user.HaveMchNo
 	}
+	if enter.ServiceApiApp == nil {
+		response.Fail(c, "请先注册插件")
+		return
+	}
 	_, err = enter.ServiceApiApp.AppService.Save(c.Request.Context(), &req)
 	if err != nil {
 		zap.L().Error("保存失败!", zap.Error(err))

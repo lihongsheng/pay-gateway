@@ -9,7 +9,6 @@ import (
 	alipayConfig "github.com/lihongsheng/payment-sdk/adapter/alipay/config"
 	fuiouConfig "github.com/lihongsheng/payment-sdk/adapter/fuiou/config"
 	wechatConfig "github.com/lihongsheng/payment-sdk/adapter/wxpay/config"
-	"github.com/lihongsheng/payment-sdk/config/proxy"
 	"github.com/lihongsheng/payment-sdk/enum/payment"
 )
 
@@ -63,7 +62,6 @@ func (a *FuiouUser) GetAliOpenID(ctx context.Context, fuiouConf *fuiouConfig.Con
 			RsaPrivate: fuiouConf.Alipay.RsaPrivate,
 			RsaRootCrt: fuiouConf.Alipay.RsaRootCrt,
 		},
-		Proxy: proxy.Proxy{},
 	}
 
 	if conf.Merchant.AppID == "" || conf.Cert.RsaPrivate == "" || conf.Cert.RsaRootCrt == "" {
@@ -110,7 +108,6 @@ func (a *FuiouUser) GetAliRedirectUrl(ctx context.Context, fuiouConf *fuiouConfi
 			RsaPrivate: fuiouConf.Alipay.RsaPrivate,
 			RsaRootCrt: fuiouConf.Alipay.RsaRootCrt,
 		},
-		Proxy: proxy.Proxy{},
 	}
 
 	if conf.Merchant.AppID == "" || conf.Cert.RsaPrivate == "" || conf.Cert.RsaRootCrt == "" {

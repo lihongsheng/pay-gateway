@@ -18,6 +18,7 @@ package plugin
 
 import (
   "encoding/json"
+  "github.com/lihongsheng/pay-gateway/log"
   "sync"
 
   "github.com/lihongsheng/pay-gateway/core/installer"
@@ -52,7 +53,6 @@ func Register(p Plugin) {
 
   // Model 进入 installer 注册中心
   installer.Register(p.Models()...)
-
   // 把插件菜单/API/SeedTable 推到 installer.Seed，用于「首次在线安装」
   // 启动期增量同步则由 initialize.SyncOnBoot 单独处理
   pl := p
@@ -94,22 +94,33 @@ func upsertMenusAndApis(db *gorm.DB, p Plugin, attachSuper bool) error {
     }
   }
 
-  // ----- APIs: 从插件菜单 api_rules 提取并写入 Casbin（兼容旧 Apis() 方法）-----
-  // 1) 从插件菜单提取 API 规则
+  // ----- APIs: 从插件菜单 api_rules 提取并写入 Casbin -----
+  // 递归遍历整棵菜单树，因为 ApiRules 可能在 menu / button 子节点上
   for _, m := range p.Menus() {
-    if m.ApiRules == "" {
-      continue
+    if err := collectAndAddApiRules(&m, attachSuper, superRoleID); err != nil {
+      return err
     }
+  }
+  return nil
+}
+
+// collectAndAddApiRules 递归提取菜单树中所有 ApiRules 并写入 Casbin
+func collectAndAddApiRules(m *system.SysMenu, attachSuper bool, superRoleID uint) error {
+  if m.ApiRules != "" {
     var rules []system.ApiRule
-    if err := json.Unmarshal([]byte(m.ApiRules), &rules); err != nil {
-      continue
-    }
-    for _, r := range rules {
-      if attachSuper && superRoleID > 0 && m.SystemType == enum.SystemTypePlatform {
-        if _, err := casbin.AddPolicy(superRoleID, r.Path, r.Method); err != nil {
-          return err
+    if err := json.Unmarshal([]byte(m.ApiRules), &rules); err == nil {
+      for _, r := range rules {
+        if attachSuper && superRoleID > 0 && m.SystemType == enum.SystemTypePlatform {
+          if _, err := casbin.AddPolicy(superRoleID, r.Path, r.Method); err != nil {
+            return err
+          }
         }
       }
+    }
+  }
+  for i := range m.Children {
+    if err := collectAndAddApiRules(&m.Children[i], attachSuper, superRoleID); err != nil {
+      return err
     }
   }
   return nil
@@ -139,7 +150,7 @@ func upsertMenuTree(db *gorm.DB, m *system.SysMenu, parentID uint, attachSuper b
       "title": m.Title, "icon": m.Icon, "sort": m.Sort,
       "permission": m.Permission, "hidden": m.Hidden,
       "keep_alive": m.KeepAlive, "redirect": m.Redirect,
-      "system_type": m.SystemType,
+      "system_type": m.SystemType, "api_rules": m.ApiRules,
     })
   }
 
@@ -186,10 +197,11 @@ func SyncOnBoot(db *gorm.DB) error {
   }
   // 2-3) 插件级 upsert + 条件 Seed
   for _, p := range All() {
-    if err := upsertMenusAndApis(db, p, true); err != nil {
+    log.Info("plugin SyncOnBoot", p.Name()+" sync on boot")
+    if err := seedIfEmpty(db, p); err != nil {
       return err
     }
-    if err := seedIfEmpty(db, p); err != nil {
+    if err := upsertMenusAndApis(db, p, true); err != nil {
       return err
     }
   }

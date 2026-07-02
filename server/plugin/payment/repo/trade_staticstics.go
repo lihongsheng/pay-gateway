@@ -135,7 +135,7 @@ func (t *tradeStaticsRepoImpl) CountGroupMch(ctx context.Context, mchNo string, 
 		Where("mch_no = ?", mchNo).
 		Where("statistic_date >= ?", start.Format("2006-01-02")).
 		Where("statistic_date <= ?", end.Format("2006-01-02")).
-		Group("mch_no").Group("statistic_date").
+		Group("mch_no").Group("app_no").Group("statistic_date").
 		Find(&statics).Error
 }
 

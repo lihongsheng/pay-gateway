@@ -2,6 +2,7 @@
 package payment
 
 import (
+  "github.com/gin-gonic/gin"
   "github.com/lihongsheng/pay-gateway/enum"
   "github.com/lihongsheng/pay-gateway/global"
   "github.com/lihongsheng/pay-gateway/model/system"
@@ -12,8 +13,6 @@ import (
   payModel "github.com/lihongsheng/pay-gateway/plugin/payment/repo/model"
   "github.com/lihongsheng/pay-gateway/plugin/payment/service/enter"
   "github.com/lihongsheng/pay-gateway/plugin/payment/svc"
-
-  "github.com/gin-gonic/gin"
   "gorm.io/gorm"
 )
 
@@ -59,49 +58,49 @@ func (p) Menus() []system.SysMenu {
           Type:      system.MenuTypeMenu,
           Path:      "application",
           Name:      "PaymentApplication",
-          Component: "plugin/payment/application/index",
+          Component: "plugin/payment/view/application/index",
           Title:     "应用管理",
           Icon:      "grid",
           Sort:      1,
-          ApiRules:  `[{"path":"/api/plugin/payment/application","method":"GET"},{"path":"/api/plugin/payment/application/search","method":"GET"},{"path":"/api/plugin/payment/application","method":"POST"},{"path":"/api/plugin/payment/application/status","method":"PUT"},{"path":"/api/plugin/payment/application/qrcode","method":"GET"}]`,
+          ApiRules:  `[{"path":"/api/plugin/payment/application","method":"GET"},{"path":"/api/plugin/payment/application/search","method":"GET"},{"path":"/api/plugin/payment/application/qrcode","method":"GET"}]`,
           Children: []system.SysMenu{
-            {Type: system.MenuTypeButton, Name: "新增应用", Permission: "application:add"},
-            {Type: system.MenuTypeButton, Name: "编辑应用", Permission: "application:edit"},
-            {Type: system.MenuTypeButton, Name: "应用状态", Permission: "application:status"},
+            {Type: system.MenuTypeButton, Name: "新增应用", Permission: "application:add", ApiRules: `[{"path":"/api/plugin/payment/application","method":"POST"}]`},
+            {Type: system.MenuTypeButton, Name: "编辑应用", Permission: "application:edit", ApiRules: `[{"path":"/api/plugin/payment/application","method":"POST"}]`},
+            {Type: system.MenuTypeButton, Name: "应用状态", Permission: "application:status", ApiRules: `[{"path":"/api/plugin/payment/application/status","method":"POST"}]`},
           },
         },
         {
           Type:      system.MenuTypeMenu,
           Path:      "payment-account",
           Name:      "PaymentAccount",
-          Component: "plugin/payment/payment-account/index",
+          Component: "plugin/payment/view/payment-account/index",
           Title:     "支付渠道",
           Icon:      "connection",
           Sort:      2,
-          ApiRules:  `[{"path":"/api/plugin/payment/payment_account","method":"GET"},{"path":"/api/plugin/payment/payment_account","method":"POST"},{"path":"/api/plugin/payment/payment_account/list","method":"GET"},{"path":"/api/plugin/payment/payment_account/channel/payment","method":"GET"},{"path":"/api/plugin/payment/payment_account/channel/config","method":"GET"},{"path":"/api/plugin/payment/payment_account/test/qrcode","method":"GET"}]`,
+          ApiRules:  `[{"path":"/api/plugin/payment/payment_account","method":"GET"},{"path":"/api/plugin/payment/payment_account/list","method":"GET"},{"path":"/api/plugin/payment/payment_account/channel/payment","method":"GET"},{"path":"/api/plugin/payment/payment_account/channel/config","method":"GET"},{"path":"/api/plugin/payment/payment_account/test/qrcode","method":"GET"}]`,
           Children: []system.SysMenu{
-            {Type: system.MenuTypeButton, Name: "新增渠道", Permission: "payment_account:add"},
-            {Type: system.MenuTypeButton, Name: "编辑渠道", Permission: "payment_account:edit"},
+            {Type: system.MenuTypeButton, Name: "新增渠道", Permission: "payment_account:add", ApiRules: `[{"path":"/api/plugin/payment/payment_account","method":"POST"}]`},
+            {Type: system.MenuTypeButton, Name: "编辑渠道", Permission: "payment_account:edit", ApiRules: `[{"path":"/api/plugin/payment/payment_account","method":"POST"}]`},
           },
         },
         {
           Type:      system.MenuTypeMenu,
           Path:      "trade",
           Name:      "PaymentTrade",
-          Component: "plugin/payment/trade/index",
+          Component: "plugin/payment/view/payment/index",
           Title:     "订单管理",
           Icon:      "document",
           Sort:      3,
-          ApiRules:  `[{"path":"/api/plugin/payment/trade","method":"GET"},{"path":"/api/plugin/payment/trade/search","method":"GET"},{"path":"/api/plugin/payment/refund","method":"POST"},{"path":"/api/plugin/payment/refund/amount","method":"GET"}]`,
+          ApiRules:  `[{"path":"/api/plugin/payment/trade","method":"GET"},{"path":"/api/plugin/payment/trade/search","method":"GET"},{"path":"/api/plugin/payment/refund/amount","method":"GET"}]`,
           Children: []system.SysMenu{
-            {Type: system.MenuTypeButton, Name: "退款", Permission: "trade:refund"},
+            {Type: system.MenuTypeButton, Name: "退款", Permission: "trade:refund", ApiRules: `[{"path":"/api/plugin/payment/refund","method":"POST"}]`},
           },
         },
         {
           Type:      system.MenuTypeMenu,
           Path:      "refund",
           Name:      "PaymentRefund",
-          Component: "plugin/payment/refund/index",
+          Component: "plugin/payment/view/refund/index",
           Title:     "退款管理",
           Icon:      "refresh-left",
           Sort:      4,
@@ -114,7 +113,7 @@ func (p) Menus() []system.SysMenu {
           Type:      system.MenuTypeMenu,
           Path:      "dashboard",
           Name:      "PaymentDashboard",
-          Component: "plugin/payment/dashboard/index",
+          Component: "plugin/payment/view/dashboard/index",
           Title:     "数据大盘",
           Icon:      "data-analysis",
           Sort:      5,
@@ -134,44 +133,51 @@ func (p) Menus() []system.SysMenu {
       SystemType: enum.SystemTypeMch,
       Children: []system.SysMenu{
         {
-          Type:      system.MenuTypeMenu,
-          Path:      "application",
-          Name:      "PaymentApplicationMch",
-          Component: "plugin/payment/application/index-mch",
-          Title:     "应用管理",
-          Icon:      "grid",
-          Sort:      1,
-          ApiRules:  `[{"path":"/api/plugin/payment/application","method":"GET"},{"path":"/api/plugin/payment/application/search","method":"GET"},{"path":"/api/plugin/payment/application","method":"POST"}]`,
+          Type:       system.MenuTypeMenu,
+          Path:       "application",
+          Name:       "PaymentApplicationMch",
+          Component:  "plugin/payment/view/application/index-mch",
+          Title:      "应用管理",
+          Icon:       "grid",
+          Sort:       1,
+          SystemType: enum.SystemTypeMch,
+          ApiRules:   `[{"path":"/api/plugin/payment/application","method":"GET"},{"path":"/api/plugin/payment/application/search","method":"GET"}]`,
+          Children: []system.SysMenu{
+            {Type: system.MenuTypeButton, Name: "新增应用", Permission: "application:add", SystemType: enum.SystemTypeMch, ApiRules: `[{"path":"/api/plugin/payment/application","method":"POST"}]`},
+          },
         },
         {
-          Type:      system.MenuTypeMenu,
-          Path:      "trade",
-          Name:      "PaymentTradeMch",
-          Component: "plugin/payment/trade/index-mch",
-          Title:     "订单管理",
-          Icon:      "document",
-          Sort:      2,
-          ApiRules:  `[{"path":"/api/plugin/payment/trade","method":"GET"},{"path":"/api/plugin/payment/trade/search","method":"GET"}]`,
+          Type:       system.MenuTypeMenu,
+          Path:       "trade",
+          Name:       "PaymentTradeMch",
+          Component:  "plugin/payment/view/payment/index-mch",
+          Title:      "订单管理",
+          Icon:       "document",
+          Sort:       2,
+          SystemType: enum.SystemTypeMch,
+          ApiRules:   `[{"path":"/api/plugin/payment/trade","method":"GET"},{"path":"/api/plugin/payment/trade/search","method":"GET"}]`,
         },
         {
-          Type:      system.MenuTypeMenu,
-          Path:      "refund",
-          Name:      "PaymentRefundMch",
-          Component: "plugin/payment/refund/index-mch",
-          Title:     "退款管理",
-          Icon:      "refresh-left",
-          Sort:      3,
-          ApiRules:  `[{"path":"/api/plugin/payment/refund","method":"GET"},{"path":"/api/plugin/payment/refund/search","method":"GET"}]`,
+          Type:       system.MenuTypeMenu,
+          Path:       "refund",
+          Name:       "PaymentRefundMch",
+          Component:  "plugin/payment/view/refund/index-mch",
+          Title:      "退款管理",
+          Icon:       "refresh-left",
+          Sort:       3,
+          SystemType: enum.SystemTypeMch,
+          ApiRules:   `[{"path":"/api/plugin/payment/refund","method":"GET"},{"path":"/api/plugin/payment/refund/search","method":"GET"}]`,
         },
         {
-          Type:      system.MenuTypeMenu,
-          Path:      "dashboard",
-          Name:      "PaymentDashboardMch",
-          Component: "plugin/payment/dashboard/index-mch",
-          Title:     "数据大盘",
-          Icon:      "data-analysis",
-          Sort:      4,
-          ApiRules:  `[{"path":"/api/plugin/payment/dashboard/mch-index","method":"GET"},{"path":"/api/plugin/payment/dashboard/mch-app-index","method":"GET"},{"path":"/api/plugin/payment/dashboard/mch-app-account-all-index","method":"GET"}]`,
+          Type:       system.MenuTypeMenu,
+          Path:       "dashboard",
+          Name:       "PaymentDashboardMch",
+          Component:  "plugin/payment/view/dashboard/index-mch",
+          Title:      "数据大盘",
+          Icon:       "data-analysis",
+          Sort:       4,
+          SystemType: enum.SystemTypeMch,
+          ApiRules:   `[{"path":"/api/plugin/payment/dashboard/mch-index","method":"GET"},{"path":"/api/plugin/payment/dashboard/mch-app-index","method":"GET"},{"path":"/api/plugin/payment/dashboard/mch-app-account-all-index","method":"GET"}]`,
         },
       },
     },
@@ -237,12 +243,14 @@ func (p) RegisterRoute(g *gin.Engine, privatePlugin *gin.RouterGroup) {
   signPublic.POST("payment/close", payApi.ClosePayment)
   signPublic.POST("refund", payApi.Refund)
   signPublic.GET("refund/query", payApi.QueryRefund)
+
+  // 初始化服务层（必须在 DB/Redis 就绪后执行，RegisterRoute 在 SyncOnBoot 之后调用）
+  svcApp := svc.NewServiceContext(global.DB, global.Redis, nil, global.Cfg.Plugin.PaymentConfig)
+  domainService := domain.NewServiceGroup(svcApp, global.Redis, *global.Cfg)
+  enter.Init(svcApp, global.DB, domainService, global.Redis, *global.Cfg)
 }
 
 func (p) SeedTable(db *gorm.DB) error {
-  svcApp := svc.NewServiceContext(db, global.Redis, nil, global.Cfg.Plugin.PaymentConfig)
-  domainService := domain.NewServiceGroup(svcApp, global.Redis, *global.Cfg)
-  enter.Init(svcApp, db, domainService, global.Redis, *global.Cfg)
   return nil // 支付插件无需种子数据
 }
 

@@ -53,7 +53,4 @@ func (p) SeedTable(db *gorm.DB) error {
 	return db.Create(&exampleModel.Note{Title: "Hello", Content: "示例插件初始化笔记"}).Error
 }
 
-func (p) Init() {
-
-}
 func init() { plugin.Register(p{}) }
