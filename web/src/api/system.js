@@ -1,55 +1,40 @@
-import service from '@/utils/request'
-// @Tags systrm
-// @Summary 获取配置文件内容
-// @Security ApiKeyAuth
-// @Produce  application/json
-// @Success 200 {string} string "{"success":true,"data":{},"msg":"返回成功"}"
-// @Router /system/getSystemConfig [post]
-export const getSystemConfig = () => {
-  return service({
-    url: '/system/getSystemConfig',
-    method: 'post'
+import request from '@/utils/request'
+
+// user
+export const userList   = (params) => request.get('/api/v1/system/user/list', { params })
+export const userCreate = (data)   => request.post('/api/v1/system/user', data)
+export const userUpdate = (data)   => request.put('/api/v1/system/user', data)
+export const userDelete = (id)     => request.delete('/api/v1/system/user/' + id)
+
+// upload
+export const uploadFile = (file) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  return request.post('/api/v1/base/upload', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' }
   })
 }
 
-// @Tags system
-// @Summary 设置配置文件内容
-// @Security ApiKeyAuth
-// @Produce  application/json
-// @Param data body sysModel.System true
-// @Success 200 {string} string "{"success":true,"data":{},"msg":"返回成功"}"
-// @Router /system/setSystemConfig [post]
-export const setSystemConfig = (data) => {
-  return service({
-    url: '/system/setSystemConfig',
-    method: 'post',
-    data
-  })
-}
+// role
+export const roleList       = ()        => request.get('/api/v1/system/role/list')
+export const roleCreate     = (data)    => request.post('/api/v1/system/role', data)
+export const roleUpdate     = (data)    => request.put('/api/v1/system/role', data)
+export const roleDelete     = (id)      => request.delete('/api/v1/system/role/' + id)
+export const roleAuth            = (data)    => request.post('/api/v1/system/role/auth', data)
+export const roleAuthDetail      = (id)      => request.get('/api/v1/system/role/auth/' + id)
+export const roleSetDefaultRouter = (id, data) => request.put('/api/v1/system/role/' + id + '/default-router', data)
 
-// @Tags system
-// @Summary 获取服务器运行状态
-// @Security ApiKeyAuth
-// @Produce  application/json
-// @Success 200 {string} string "{"success":true,"data":{},"msg":"返回成功"}"
-// @Router /system/getServerInfo [post]
-export const getSystemState = () => {
-  return service({
-    url: '/system/getServerInfo',
-    method: 'post',
-    donNotShowLoading: true
-  })
-}
+// menu
+export const menuTree   = ()        => request.get('/api/v1/system/menu/tree')
+export const menuCreate = (data)    => request.post('/api/v1/system/menu', data)
+export const menuUpdate = (data)    => request.put('/api/v1/system/menu', data)
+export const menuDelete = (id)      => request.delete('/api/v1/system/menu/' + id)
 
-/**
- * 重载服务
- * @param data
- * @returns {*}
- */
-export const reloadSystem = (data) => {
-  return service({
-    url: '/system/reloadSystem',
-    method: 'post',
-    data
-  })
-}
+// api
+export const apiList    = (params)  => request.get('/api/v1/system/api/list', { params })
+export const apiCreate  = (data)    => request.post('/api/v1/system/api', data)
+export const apiUpdate  = (data)    => request.put('/api/v1/system/api', data)
+export const apiDelete  = (id)      => request.delete('/api/v1/system/api/' + id)
+
+// plugin
+export const pluginList = ()        => request.get('/api/v1/plugin/list')

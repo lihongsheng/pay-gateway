@@ -1,46 +1,17 @@
 <template>
-  <div
-    id="app"
-    class="bg-gray-50 text-slate-700 !dark:text-slate-500 dark:bg-slate-800"
-  >
-    <el-config-provider :locale="zhCn" :size="appStore.config.global_size">
-      <router-view />
-      <Application />
-    </el-config-provider>
-  </div>
+  <div id="app"><router-view /></div>
 </template>
-
 <script setup>
-  import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
-  import Application from '@/components/application/index.vue'
-  import { useAppStore } from '@/pinia'
-
-  const appStore = useAppStore()
-  defineOptions({
-    name: 'App'
-  })
+import { useDarkMode } from '@/composables/useDarkMode'
+// 初始化深色模式（确保 watchEffect 尽早生效）
+useDarkMode()
 </script>
-<style lang="scss">
-  // 引入初始化样式
-  #app {
-    height: 100vh;
-    overflow: hidden;
-    font-weight: 400 !important;
-  }
+<style>
+/* 全局基础样式 */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body, #app { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 
-  .el-button {
-    font-weight: 400 !important;
-  }
-
-  .gva-body-h {
-    min-height: calc(100% - 3rem);
-  }
-
-  .gva-container {
-    height: calc(100% - 2.5rem);
-  }
-
-  .gva-container2 {
-    height: calc(100% - 4.5rem);
-  }
+/* 深色模式全局过渡 */
+html.dark { color-scheme: dark; }
+html.dark body { background: #141414; color: #e5eaf3; }
 </style>
