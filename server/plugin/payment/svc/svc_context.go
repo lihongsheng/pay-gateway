@@ -26,6 +26,7 @@ type ServiceContext struct {
 	EventRecordRepo     repo.EventRecordRepo
 	StatisticsRepo      repo.Statistics
 	Config              config.Config
+	Redis               *redis.Client
 }
 
 var ServiceContextApp *ServiceContext
@@ -49,6 +50,7 @@ func NewServiceContext(db *gorm.DB, redis *redis.Client, producer sarama.SyncPro
 			channel.Channel_Fuiou:  adapter2.NewFuiouUser(),
 		},
 		Event: infrastructure.NewEvent(producer),
+		Redis: redis,
 	}
 	return ServiceContextApp
 }

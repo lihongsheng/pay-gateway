@@ -24,7 +24,6 @@ yarn-error.log*
 rm_file/
 /server/logs/
 /server/gva
-/server/server
 /server/latest_log
 /server/__debug_bin*
 server/uploads/

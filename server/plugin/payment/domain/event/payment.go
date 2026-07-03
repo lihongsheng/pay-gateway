@@ -178,4 +178,5 @@ type RefundNotifyRetryEvent struct {
 	RefundNo      string `json:"refund_no"`
 	RefundTradeNo string `json:"refund_trade_no"`
 	NotifyCount   int    `json:"notify_count"`
+	TradeNo       string `json:"trade_no"`
 }

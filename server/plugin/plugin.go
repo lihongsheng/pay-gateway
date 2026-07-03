@@ -7,6 +7,7 @@
 //   - 把每个插件的 Models() 注册到 installer，参与在线初始化与启动期增量迁移
 //   - 把每个插件的 Apis() / Menus() 在启动时按 (path,method) / (name) 做幂等 upsert
 //   - SeedTable(db) 仅在「插件目标表当前为空」时执行，避免重复写入
+//   - InitServices(ctx) 在 SyncOnBoot 之后调用，初始化插件自身服务层
 //   - RegisterRoute(g) 挂到 /api/plugin/<name>
 //
 // 菜单设计：
@@ -17,27 +18,40 @@
 package plugin
 
 import (
-  "encoding/json"
-  "github.com/lihongsheng/pay-gateway/log"
-  "sync"
+	"encoding/json"
+	"fmt"
+	"sync"
 
-  "github.com/lihongsheng/pay-gateway/core/installer"
-  "github.com/lihongsheng/pay-gateway/enum"
-  "github.com/lihongsheng/pay-gateway/model/system"
-  "github.com/lihongsheng/pay-gateway/utils/casbin"
+	"github.com/lihongsheng/pay-gateway/config"
+	"github.com/lihongsheng/pay-gateway/core/installer"
+	"github.com/lihongsheng/pay-gateway/enum"
+	"github.com/lihongsheng/pay-gateway/log"
+	"github.com/lihongsheng/pay-gateway/model/system"
+	"github.com/lihongsheng/pay-gateway/utils/casbin"
+	"github.com/redis/go-redis/v9"
 
-  "github.com/gin-gonic/gin"
-  "gorm.io/gorm"
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
+
+// InitContext 插件初始化上下文，包含插件可能需要的所有依赖
+type InitContext struct {
+	DB     *gorm.DB       // 数据库连接
+	Redis  *redis.Client  // Redis 客户端
+	Config config.Config  // 全局配置
+	Logger log.Logger     // 日志器
+	// 可扩展：Casbin、Kafka Producer 等
+}
 
 // Plugin 插件契约
 type Plugin interface {
-  Name() string                                                // 唯一名（路由前缀 / 表前缀建议同名）
-  Version() string                                             // 版本号
-  Models() []interface{}                                       // 参与 AutoMigrate 的 Model
-  Menus() []system.SysMenu                                     // 注入菜单树（含 catalog/menu/button；按 Name 幂等）；API 规则通过菜单 ApiRules 字段注入
-  RegisterRoute(g *gin.Engine, privatePlugin *gin.RouterGroup) // g gin.Engine , privatePlugin 插件路由 /api/plugin/<name>
-  SeedTable(db *gorm.DB) error                                 // 插件自身业务表的初始数据；仅在目标表为空时调用
+	Name() string                                                // 唯一名（路由前缀 / 表前缀建议同名）
+	Version() string                                             // 版本号
+	Models() []interface{}                                       // 参与 AutoMigrate 的 Model
+	Menus() []system.SysMenu                                     // 注入菜单树（含 catalog/menu/button；按 Name 幂等）；API 规则通过菜单 ApiRules 字段注入
+	InitServices(ctx InitContext) error                          // 初始化插件自身服务层（在 SyncOnBoot 之后、RegisterRoute 之前调用）
+	RegisterRoute(g *gin.Engine, privatePlugin *gin.RouterGroup) // g gin.Engine , privatePlugin 插件路由 /api/plugin/<name>
+	SeedTable(db *gorm.DB) error                                 // 插件自身业务表的初始数据；仅在目标表为空时调用
 }
 
 var (
@@ -210,16 +224,28 @@ func SyncOnBoot(db *gorm.DB) error {
 
 // seedIfEmpty 仅当插件首张 Model 表为空时调用 SeedTable
 func seedIfEmpty(db *gorm.DB, p Plugin) error {
-  ms := p.Models()
-  if len(ms) == 0 {
-    return p.SeedTable(db) // 无 Model 的插件直接交给插件自行幂等
-  }
-  var cnt int64
-  if err := db.Model(ms[0]).Count(&cnt).Error; err != nil {
-    return err
-  }
-  if cnt > 0 {
-    return nil
-  }
-  return p.SeedTable(db)
+	ms := p.Models()
+	if len(ms) == 0 {
+		return p.SeedTable(db) // 无 Model 的插件直接交给插件自行幂等
+	}
+	var cnt int64
+	if err := db.Model(ms[0]).Count(&cnt).Error; err != nil {
+		return err
+	}
+	if cnt > 0 {
+		return nil
+	}
+	return p.SeedTable(db)
+}
+
+// InitPlugins 在 SyncOnBoot 之后调用，初始化所有插件的服务层
+// 依赖 DB/Redis/Config 已就绪，插件可在此初始化自身服务对象
+func InitPlugins(ctx InitContext) error {
+	for _, p := range All() {
+		if err := p.InitServices(ctx); err != nil {
+			return fmt.Errorf("plugin %s InitServices failed: %w", p.Name(), err)
+		}
+		log.Info("plugin services initialized: " + p.Name())
+	}
+	return nil
 }
