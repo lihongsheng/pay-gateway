@@ -246,7 +246,7 @@ func (p) RegisterRoute(g *gin.Engine, privatePlugin *gin.RouterGroup) {
 
 // InitServices 初始化支付插件服务层
 func (p) InitServices(ctx plugin.InitContext) error {
-	svcApp := svc.NewServiceContext(ctx.DB, ctx.Redis, nil, ctx.Config.Plugin.PaymentConfig)
+	svcApp := svc.NewServiceContext(ctx.DB, ctx.Redis, ctx.KafkaProducer, ctx.Config.Plugin.PaymentConfig)
 	domainService := domain.NewServiceGroup(svcApp, ctx.Redis, ctx.Config)
 	enter.Init(svcApp, ctx.DB, domainService, ctx.Redis, ctx.Config)
 	return nil

@@ -20,6 +20,7 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/IBM/sarama"
 	"sync"
 
 	"github.com/lihongsheng/pay-gateway/config"
@@ -36,11 +37,12 @@ import (
 
 // InitContext 插件初始化上下文，包含插件可能需要的所有依赖
 type InitContext struct {
-	DB     *gorm.DB       // 数据库连接
-	Redis  *redis.Client  // Redis 客户端
-	Config config.Config  // 全局配置
-	Logger log.Logger     // 日志器
+	DB     *gorm.DB      // 数据库连接
+	Redis  *redis.Client // Redis 客户端
+	Config config.Config // 全局配置
+	Logger log.Logger    // 日志器
 	// 可扩展：Casbin、Kafka Producer 等
+	KafkaProducer sarama.SyncProducer
 }
 
 // Plugin 插件契约
@@ -55,36 +57,36 @@ type Plugin interface {
 }
 
 var (
-  mu       sync.RWMutex
-  registry []Plugin
+	mu       sync.RWMutex
+	registry []Plugin
 )
 
 // Register 由插件 init() 调用
 func Register(p Plugin) {
-  mu.Lock()
-  defer mu.Unlock()
-  registry = append(registry, p)
+	mu.Lock()
+	defer mu.Unlock()
+	registry = append(registry, p)
 
-  // Model 进入 installer 注册中心
-  installer.Register(p.Models()...)
-  // 把插件菜单/API/SeedTable 推到 installer.Seed，用于「首次在线安装」
-  // 启动期增量同步则由 initialize.SyncOnBoot 单独处理
-  pl := p
-  installer.RegisterSeed(func(d installer.SeedDeps) error {
-    if err := upsertMenusAndApis(d.DB, pl, true); err != nil {
-      return err
-    }
-    return pl.SeedTable(d.DB)
-  })
+	// Model 进入 installer 注册中心
+	installer.Register(p.Models()...)
+	// 把插件菜单/API/SeedTable 推到 installer.Seed，用于「首次在线安装」
+	// 启动期增量同步则由 initialize.SyncOnBoot 单独处理
+	pl := p
+	installer.RegisterSeed(func(d installer.SeedDeps) error {
+		if err := upsertMenusAndApis(d.DB, pl, true); err != nil {
+			return err
+		}
+		return pl.SeedTable(d.DB)
+	})
 }
 
 // All 返回全部已注册插件
 func All() []Plugin {
-  mu.RLock()
-  defer mu.RUnlock()
-  out := make([]Plugin, len(registry))
-  copy(out, registry)
-  return out
+	mu.RLock()
+	defer mu.RUnlock()
+	out := make([]Plugin, len(registry))
+	copy(out, registry)
+	return out
 }
 
 // ---------- 菜单 / API 幂等同步 ----------
@@ -92,106 +94,106 @@ func All() []Plugin {
 // upsertMenusAndApis 递归插入插件菜单树 + 幂等写入 API
 // attachSuper 决定是否自动挂到超级管理员角色
 func upsertMenusAndApis(db *gorm.DB, p Plugin, attachSuper bool) error {
-  // 若需要挂到超级管理员，先查角色 ID
-  var superRoleID uint
-  if attachSuper {
-    var super system.SysRole
-    if err := db.Where("name = ?", "超级管理员").First(&super).Error; err == nil {
-      superRoleID = super.ID
-    }
-  }
+	// 若需要挂到超级管理员，先查角色 ID
+	var superRoleID uint
+	if attachSuper {
+		var super system.SysRole
+		if err := db.Where("name = ?", "超级管理员").First(&super).Error; err == nil {
+			superRoleID = super.ID
+		}
+	}
 
-  // ----- Menus（递归 upsert 整棵树，按 name 幂等）-----
-  for _, m := range p.Menus() {
-    if err := upsertMenuTree(db, &m, 0, attachSuper); err != nil {
-      return err
-    }
-  }
+	// ----- Menus（递归 upsert 整棵树，按 name 幂等）-----
+	for _, m := range p.Menus() {
+		if err := upsertMenuTree(db, &m, 0, attachSuper); err != nil {
+			return err
+		}
+	}
 
-  // ----- APIs: 从插件菜单 api_rules 提取并写入 Casbin -----
-  // 递归遍历整棵菜单树，因为 ApiRules 可能在 menu / button 子节点上
-  for _, m := range p.Menus() {
-    if err := collectAndAddApiRules(&m, attachSuper, superRoleID); err != nil {
-      return err
-    }
-  }
-  return nil
+	// ----- APIs: 从插件菜单 api_rules 提取并写入 Casbin -----
+	// 递归遍历整棵菜单树，因为 ApiRules 可能在 menu / button 子节点上
+	for _, m := range p.Menus() {
+		if err := collectAndAddApiRules(&m, attachSuper, superRoleID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // collectAndAddApiRules 递归提取菜单树中所有 ApiRules 并写入 Casbin
 func collectAndAddApiRules(m *system.SysMenu, attachSuper bool, superRoleID uint) error {
-  if m.ApiRules != "" {
-    var rules []system.ApiRule
-    if err := json.Unmarshal([]byte(m.ApiRules), &rules); err == nil {
-      for _, r := range rules {
-        if attachSuper && superRoleID > 0 && m.SystemType == enum.SystemTypePlatform {
-          if _, err := casbin.AddPolicy(superRoleID, r.Path, r.Method); err != nil {
-            return err
-          }
-        }
-      }
-    }
-  }
-  for i := range m.Children {
-    if err := collectAndAddApiRules(&m.Children[i], attachSuper, superRoleID); err != nil {
-      return err
-    }
-  }
-  return nil
+	if m.ApiRules != "" {
+		var rules []system.ApiRule
+		if err := json.Unmarshal([]byte(m.ApiRules), &rules); err == nil {
+			for _, r := range rules {
+				if attachSuper && superRoleID > 0 && m.SystemType == enum.SystemTypePlatform {
+					if _, err := casbin.AddPolicy(superRoleID, r.Path, r.Method); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	for i := range m.Children {
+		if err := collectAndAddApiRules(&m.Children[i], attachSuper, superRoleID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // upsertMenuTree 递归创建 / 更新单棵菜单子树
 // parentID 为父节点 ID；创建成功后按 name 幂等，已存在则更新字段
 func upsertMenuTree(db *gorm.DB, m *system.SysMenu, parentID uint, attachSuper bool) error {
-  children := m.Children
-  m.Children = nil
-  m.ParentID = parentID
+	children := m.Children
+	m.Children = nil
+	m.ParentID = parentID
 
-  var exist system.SysMenu
-  err := db.Where("name = ?", m.Name).First(&exist).Error
-  if err == gorm.ErrRecordNotFound {
-    if err := db.Create(m).Error; err != nil {
-      return err
-    }
-    exist = *m
-  } else if err != nil {
-    return err
-  } else {
-    // 已存在则更新关键字段
-    db.Model(&exist).Updates(map[string]interface{}{
-      "type": m.Type, "parent_id": parentID,
-      "path": m.Path, "component": m.Component,
-      "title": m.Title, "icon": m.Icon, "sort": m.Sort,
-      "permission": m.Permission, "hidden": m.Hidden,
-      "keep_alive": m.KeepAlive, "redirect": m.Redirect,
-      "system_type": m.SystemType, "api_rules": m.ApiRules,
-    })
-  }
+	var exist system.SysMenu
+	err := db.Where("name = ?", m.Name).First(&exist).Error
+	if err == gorm.ErrRecordNotFound {
+		if err := db.Create(m).Error; err != nil {
+			return err
+		}
+		exist = *m
+	} else if err != nil {
+		return err
+	} else {
+		// 已存在则更新关键字段
+		db.Model(&exist).Updates(map[string]interface{}{
+			"type": m.Type, "parent_id": parentID,
+			"path": m.Path, "component": m.Component,
+			"title": m.Title, "icon": m.Icon, "sort": m.Sort,
+			"permission": m.Permission, "hidden": m.Hidden,
+			"keep_alive": m.KeepAlive, "redirect": m.Redirect,
+			"system_type": m.SystemType, "api_rules": m.ApiRules,
+		})
+	}
 
-  // 仅平台级菜单自动挂到超级管理员
-  if attachSuper && m.SystemType == enum.SystemTypePlatform {
-    if err := attachMenuToSuper(db, exist.ID); err != nil {
-      return err
-    }
-  }
+	// 仅平台级菜单自动挂到超级管理员
+	if attachSuper && m.SystemType == enum.SystemTypePlatform {
+		if err := attachMenuToSuper(db, exist.ID); err != nil {
+			return err
+		}
+	}
 
-  // 递归处理子节点（catalog 的 menu 子节点，menu 的 button 子节点）
-  for i := range children {
-    if err := upsertMenuTree(db, &children[i], exist.ID, attachSuper); err != nil {
-      return err
-    }
-  }
-  return nil
+	// 递归处理子节点（catalog 的 menu 子节点，menu 的 button 子节点）
+	for i := range children {
+		if err := upsertMenuTree(db, &children[i], exist.ID, attachSuper); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ---------- 超级管理员关联 ----------
 
 func attachMenuToSuper(db *gorm.DB, menuID uint) error {
-  var super system.SysRole
-  if err := db.Where("name = ?", "超级管理员").First(&super).Error; err != nil {
-    return nil // 超级管理员还没建（极早期），跳过
-  }
-  return db.Model(&super).Association("Menus").Append(&system.SysMenu{Base: system.Base{ID: menuID}})
+	var super system.SysRole
+	if err := db.Where("name = ?", "超级管理员").First(&super).Error; err != nil {
+		return nil // 超级管理员还没建（极早期），跳过
+	}
+	return db.Model(&super).Association("Menus").Append(&system.SysMenu{Base: system.Base{ID: menuID}})
 }
 
 // ---------- 启动期同步 ----------
@@ -203,23 +205,23 @@ func attachMenuToSuper(db *gorm.DB, menuID uint) error {
 //
 // 该函数对外暴露，由 initialize.SyncOnBoot 调用。
 func SyncOnBoot(db *gorm.DB) error {
-  // 1) 全量 AutoMigrate（系统 + 全部插件 Model）
-  for _, m := range installer.AllModels() {
-    if err := db.AutoMigrate(m); err != nil {
-      return err
-    }
-  }
-  // 2-3) 插件级 upsert + 条件 Seed
-  for _, p := range All() {
-    log.Info("plugin SyncOnBoot", p.Name()+" sync on boot")
-    if err := seedIfEmpty(db, p); err != nil {
-      return err
-    }
-    if err := upsertMenusAndApis(db, p, true); err != nil {
-      return err
-    }
-  }
-  return nil
+	// 1) 全量 AutoMigrate（系统 + 全部插件 Model）
+	for _, m := range installer.AllModels() {
+		if err := db.AutoMigrate(m); err != nil {
+			return err
+		}
+	}
+	// 2-3) 插件级 upsert + 条件 Seed
+	for _, p := range All() {
+		log.Info("plugin SyncOnBoot", p.Name()+" sync on boot")
+		if err := seedIfEmpty(db, p); err != nil {
+			return err
+		}
+		if err := upsertMenusAndApis(db, p, true); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // seedIfEmpty 仅当插件首张 Model 表为空时调用 SeedTable

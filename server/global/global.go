@@ -3,6 +3,7 @@
 package global
 
 import (
+	"github.com/IBM/sarama"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 	"sync/atomic"
@@ -18,7 +19,8 @@ var (
 	Redis *redis.Client
 	Viper *viper.Viper
 	// Installed 全局安装状态，安装中间件读取
-	Installed atomic.Bool
+	Installed    atomic.Bool
+	KafkaProduct sarama.SyncProducer
 )
 
 // SetDB 安装完成 / 启动加载完成后写入

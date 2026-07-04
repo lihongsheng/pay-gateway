@@ -21,6 +21,17 @@ type Config struct {
 	Observability Observability   `mapstructure:"observability" json:"observability" yaml:"observability"`
 	Plugin        Plugin          `mapstructure:"plugin"       json:"plugin"       yaml:"plugin"`
 	Env           Env             `mapstructure:"env" json:"env" yaml:"env"`
+	Kafka         Kafka           `mapstructure:"kafka" json:"kafka" yaml:"kafka"`
+}
+
+type Kafka struct {
+	Enable   bool              `mapstructure:"enable" json:"enable" yaml:"enable"`
+	Brokers  []string          `mapstructure:"brokers" json:"brokers" yaml:"brokers"`
+	Username string            `mapstructure:"username" json:"username" yaml:"username"`
+	Password string            `mapstructure:"password" json:"password" yaml:"password"`
+	ClientID string            `mapstructure:"client_id" json:"client_id" yaml:"client_id"`
+	NeedAuth bool              `mapstructure:"need_auth" json:"need_auth" yaml:"need_auth"`
+	Topic    map[string]string `mapstructure:"topic" json:"topic" yaml:"topic"`
 }
 
 type Upload struct {

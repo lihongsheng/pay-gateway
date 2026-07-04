@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/IBM/sarama"
+	"github.com/lihongsheng/pay-gateway/config"
 	"github.com/lihongsheng/pay-gateway/global"
+	"github.com/lihongsheng/pay-gateway/log"
 	"github.com/lihongsheng/pay-gateway/queue"
 	"go.uber.org/zap"
 	"sync"
@@ -32,17 +34,21 @@ type Consumer struct {
 	consumer []ConsumerConfig
 	cancel   context.CancelFunc
 	baseCtx  context.Context
+	cfg      config.Config
 }
 
 // NewConsumer 基于consumer配置可以启动多个消费者组
 func NewConsumer(consumer []ConsumerConfig) *Consumer {
+	if !global.Cfg.Kafka.Enable {
+		panic("kafka not enable")
+	}
 	return &Consumer{
 		consumer: consumer,
 	}
 }
 
 func getConfig() ([]string, *sarama.Config) {
-	kafkaConfig := global.GVA_CONFIG.Kafka
+	kafkaConfig := global.Cfg.Kafka
 	config := sarama.NewConfig()
 	// 阿里云Kafka版本通常为2.2.x或更高，根据实际版本调整
 	config.Version = sarama.V3_3_1_0
@@ -83,7 +89,7 @@ func getConfig() ([]string, *sarama.Config) {
 		config.Net.TLS.Enable = true
 		config.Net.TLS.Config = tlsConfig
 	}
-	return global.GVA_CONFIG.Kafka.Brokers, config
+	return global.Cfg.Kafka.Brokers, config
 }
 
 // sarama 会根据topic的分区数，自动建立对应的go去消费
@@ -136,7 +142,7 @@ func (k *Consumer) Start(ctx context.Context) error {
 				if err != nil {
 					retry--
 					if retry < 1 {
-						global.GVA_LOG.Info("kafkaConsumerStartError", zap.String("error", err.Error()),
+						log.Info("kafkaConsumerStartError", zap.String("error", err.Error()),
 							zap.String("topic", val.config.Topic), zap.String("Group", val.config.Group))
 						errChannel <- err
 						return
@@ -160,7 +166,7 @@ func (k *Consumer) Start(ctx context.Context) error {
 	return nil
 }
 
-func (k *Consumer) Stop() error {
+func (k *Consumer) Stop(ctx context.Context) error {
 	// 告知kafka 组件停止消费
 	if k.cancel != nil {
 		k.cancel()
@@ -214,7 +220,7 @@ func (c *ConsumerHandle) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 			// 调用批量接口
 			err := batchHandler.BatchMessage(newCancelCtx, msgs)
 			if err != nil {
-				global.GVA_LOG.Error("kafkaBatchConsumerError", zap.Error(err))
+				log.Error("kafkaBatchConsumerError", zap.Error(err))
 				// 策略：如果批量失败，返回错误会导致 Rebalance 和重试。
 				// 如果你希望跳过错误数据，这里应该记录日志并返回 nil。
 				return err
@@ -248,7 +254,7 @@ func (c *ConsumerHandle) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 				if !ok {
 					return nil
 				}
-				global.GVA_LOG.Info("kafkaExtractBatch", zap.String("topic", message.Topic), zap.String("value", string(message.Value)))
+				log.Info("kafkaExtractBatch", zap.String("topic", message.Topic), zap.String("value", string(message.Value)))
 				buffer = append(buffer, message)
 				// 数量触发提交
 				if len(buffer) >= batchHandler.BatchSize() {
@@ -267,7 +273,7 @@ func (c *ConsumerHandle) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 		defer func() {
 			e := recover()
 			if e != nil {
-				global.GVA_LOG.Info("kafkaConsumerPanic", zap.Any("err", e))
+				log.Info("kafkaConsumerPanic", zap.Any("err", e))
 				_, ok := e.(error)
 				if !ok {
 					err = errors.New("ERROR" + fmt.Sprintf("errro %v", e))
@@ -284,7 +290,7 @@ func (c *ConsumerHandle) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 			case <-c.BaseCtx.Done():
 				// 优雅退出
 				c.Handler.NotifyClose()
-				global.GVA_LOG.Info("kafkaConsumerQuit", zap.String("quit", "quit"))
+				log.Info("kafkaConsumerQuit", zap.String("quit", "quit"))
 				return nil
 			case message, ok := <-claim.Messages():
 				if !ok {
@@ -294,7 +300,7 @@ func (c *ConsumerHandle) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 				//_ = c.Log.Log(log.LevelInfo, log.DefaultMessageKey, "kafka-msg", "topic", message.Topic, "offset", message.Offset, "Partition", message.Partition)
 				// 从kafka消息头里导出 trace信息
 				newCancelCtx, cancel := context.WithCancel(c.BaseCtx)
-				global.GVA_LOG.Info("kafkaExtract", zap.String("topic", message.Topic), zap.String("value", string(message.Value)))
+				log.Info("kafkaExtract", zap.String("topic", message.Topic), zap.String("value", string(message.Value)))
 				//tracer := otel.Tracer("kafka")
 				//newCtx, span := tracer.Start(newCancelCtx, "kafka", trace.WithAttributes(), trace.WithSpanKind(trace.SpanKindConsumer))
 				//// 处理消息
@@ -306,7 +312,7 @@ func (c *ConsumerHandle) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 					cancel()
 					// 记录日志
 					//session.Context().Done()
-					global.GVA_LOG.Error("kafkaConsumerError", zap.Error(err))
+					log.Error("kafkaConsumerError", zap.Error(err))
 					return err
 				}
 				cancel()

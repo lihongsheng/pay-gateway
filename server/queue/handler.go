@@ -5,13 +5,6 @@ import (
 	"time"
 )
 
-// kafka 处理消息相关
-
-type Server interface {
-	Start(ctx context.Context) error
-	Stop() error
-}
-
 type Handler interface {
 	// Message 消费消息
 	Message(ctx context.Context, msg string) error

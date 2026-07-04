@@ -63,3 +63,11 @@ upload:
         path_prefix: ""
     local:
         path: ./uploads
+kafka:
+  enable: false
+  brokers:
+    - 127.0.0.1:9092
+  client_id: payment-local
+  need_auth: false
+  password:
+  username:

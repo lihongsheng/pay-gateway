@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"github.com/lihongsheng/pay-gateway/cron"
 	"github.com/lihongsheng/pay-gateway/cron/initalize"
+	initalize2 "github.com/lihongsheng/pay-gateway/queue/initalize"
+	"github.com/lihongsheng/pay-gateway/queue/kafka"
 	"github.com/lihongsheng/pay-gateway/server"
 	stdlog "log"
 	"net/http"
@@ -72,11 +74,12 @@ func main() {
 			logger.Error("shutdown metrics: " + err.Error())
 		}
 	}()
-
-	// install service 早于 DB 装配——安装向导本身无需 DB 就绪
-	initialize.InitInstallService()
 	// 初始化 Redis（如启用）
 	initialize.InitRedis()
+	// 初始化 kafka product
+	initialize.NewKafkaProduct(*cfg)
+	// install service 早于 DB 装配——安装向导本身无需 DB 就绪
+	initialize.InitInstallService()
 	// 尝试连接 DB；连不上不致命，进入安装向导模式
 	if cfg.DB.Configured() {
 		if err := initialize.GormConnect(); err != nil {
@@ -108,11 +111,11 @@ func main() {
 		"addr", addr,
 		"installed", global.Installed.Load(),
 	)
-
 	// 启动服务
 	httpSrv := server.NewHttpServer(addr, r)
 	cronSrv := cron.NewCronServer(initalize.GetCronJobs()...)
-	app := server.NewApp(30*time.Second, httpSrv, cronSrv)
+	consumerSvr := kafka.NewConsumer(initalize2.GetKafkaConsumer())
+	app := server.NewApp(30*time.Second, httpSrv, cronSrv, consumerSvr)
 	if err := app.Run(); err != nil {
 		logger.Error("server run failed: " + err.Error())
 		os.Exit(1)
