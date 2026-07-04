@@ -4,12 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/lihongsheng/pay-gateway/cron"
+	"github.com/lihongsheng/pay-gateway/cron/initalize"
 	"github.com/lihongsheng/pay-gateway/server"
 	stdlog "log"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/lihongsheng/pay-gateway/config"
@@ -91,16 +91,12 @@ func main() {
 
 	// 初始化验证码存储（根据配置选择 memory / redis）
 	initialize.InitCaptcha()
-
 	// 加载插件（注册 Model 到 installer 注册中心 / 注册路由）
 	initialize.LoadPlugins()
-
 	// 已安装且 DB 就绪：启动期增量同步（新插件 Model/菜单/API 自动迁入）
 	initialize.SyncOnBoot()
-
 	// 装配依赖 global.DB 的 service 单例（DB 未就绪时这步空跑，等安装回调）
 	initialize.InitDBServices()
-
 	// 启动服务器（支持优雅关闭）
 	r := initialize.Router(
 		initialize.WithRouterLogger(logger),
@@ -113,34 +109,13 @@ func main() {
 		"installed", global.Installed.Load(),
 	)
 
-	// 使用 http.Server 以支持优雅关闭
+	// 启动服务
 	httpSrv := server.NewHttpServer(addr, r)
-    cronSrv := 
-	// 在 goroutine 中启动服务器
-	srvErr := make(chan error, 1)
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			srvErr <- err
-		}
-	}()
-
-	// 等待中断信号
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case err := <-srvErr:
-		logger.Fatal("server run: " + err.Error())
-	case <-quit:
-		logger.Info("shutting down server...")
+	cronSrv := cron.NewCronServer(initalize.GetCronJobs()...)
+	app := server.NewApp(30*time.Second, httpSrv, cronSrv)
+	if err := app.Run(); err != nil {
+		logger.Error("server run failed: " + err.Error())
+		os.Exit(1)
 	}
-
-	// 优雅退出：给正在处理的请求 5 秒时间完成
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		logger.Error("server shutdown: " + err.Error())
-	}
-	logger.Info("server exited")
+	logger.Info("server stopped")
 }
