@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"github.com/lihongsheng/pay-gateway/cron"
 	"github.com/lihongsheng/pay-gateway/cron/initalize"
-	initalize2 "github.com/lihongsheng/pay-gateway/queue/initalize"
-	"github.com/lihongsheng/pay-gateway/queue/kafka"
 	"github.com/lihongsheng/pay-gateway/server"
 	stdlog "log"
 	"net/http"
@@ -114,8 +112,8 @@ func main() {
 	// 启动服务
 	httpSrv := server.NewHttpServer(addr, r)
 	cronSrv := cron.NewCronServer(initalize.GetCronJobs()...)
-	consumerSvr := kafka.NewConsumer(initalize2.GetKafkaConsumer())
-	app := server.NewApp(30*time.Second, httpSrv, cronSrv, consumerSvr)
+	//consumerSvr := kafka.NewConsumer(initalize2.GetKafkaConsumer())
+	app := server.NewApp(30*time.Second, httpSrv, cronSrv)
 	if err := app.Run(); err != nil {
 		logger.Error("server run failed: " + err.Error())
 		os.Exit(1)

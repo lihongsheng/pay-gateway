@@ -10,6 +10,9 @@ import (
 )
 
 func NewKafkaProduct(cfg config.Config) {
+	if !cfg.Kafka.Enable {
+		return
+	}
 	kafkaConfig := cfg.Kafka
 	// 配置Sarama
 	config := sarama.NewConfig()

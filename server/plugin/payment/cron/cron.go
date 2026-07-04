@@ -13,75 +13,77 @@ import (
 	"go.uber.org/zap"
 )
 
-var NewCtx = context.Background()
-
-type CronService struct {
+type Handler struct {
 	svc *svc.ServiceContext
 }
 
-func NewCronService(svc *svc.ServiceContext) *CronService {
-	return &CronService{
-		svc: svc,
-	}
+var Job = &Handler{
+	svc: svc.ServiceContextApp,
 }
 
 // DeleteEventRecord 删除事件处理记录
-func (c *CronService) DeleteEventRecord(ctx context.Context) {
-	r, _ := c.svc.Redis.SetNX(NewCtx, "deleteEventRecordJob", fmt.Sprintf("%d", time.Now().Unix()), 2*time.Minute).Result()
+func (c *Handler) DeleteEventRecord(ctx context.Context) error {
+	r, err := c.svc.Redis.SetNX(ctx, "deleteEventRecordJob", fmt.Sprintf("%d", time.Now().Unix()), 2*time.Minute).Result()
 	if !r {
-		return
+		return nil
 	}
-	defer c.svc.Redis.Del(NewCtx, "deleteEventRecordJob")
-	err := c.svc.EventRecordRepo.Delete(NewCtx, time.Now().Add(-time.Hour*24*3))
+	defer c.svc.Redis.Del(ctx, "deleteEventRecordJob")
+	err = c.svc.EventRecordRepo.Delete(ctx, time.Now().Add(-time.Hour*24*3))
 	if err != nil {
-		log.WithCtx(NewCtx).Error("DeleteEventRecord", zap.Error(err))
+		log.WithCtx(ctx).Error("DeleteEventRecord", zap.Error(err))
+		return err
 	}
+	return nil
 }
 
 // DeletePaymentRequestLog 删除支付请求日志
-func (c *CronService) DeletePaymentRequestLog(ctx context.Context) {
-	r, _ := c.svc.Redis.SetNX(NewCtx, "deletePaymentLogJob", fmt.Sprintf("%d", time.Now().Unix()), 2*time.Minute).Result()
+func (c *Handler) DeletePaymentRequestLog(ctx context.Context) error {
+	r, _ := c.svc.Redis.SetNX(ctx, "deletePaymentLogJob", fmt.Sprintf("%d", time.Now().Unix()), 2*time.Minute).Result()
 	if !r {
-		return
+		return nil
 	}
-	defer c.svc.Redis.Del(NewCtx, "deletePaymentLogJob")
-	err := c.svc.PaymentOrderRepo.DeletePaymentRequestLog(NewCtx, time.Now().Add(-time.Hour*24*7))
+	defer c.svc.Redis.Del(ctx, "deletePaymentLogJob")
+	err := c.svc.PaymentOrderRepo.DeletePaymentRequestLog(ctx, time.Now().Add(-time.Hour*24*7))
 	if err != nil {
-		log.WithCtx(NewCtx).Error("DeletePaymentRequestLog", zap.Error(err))
+		log.WithCtx(ctx).Error("DeletePaymentRequestLog", zap.Error(err))
+		return err
 	}
+	return nil
 }
 
 // DeleteNotifyRecord 删除通知记录
-func (c *CronService) DeleteNotifyRecord(ctx context.Context) {
-	r, _ := c.svc.Redis.SetNX(NewCtx, "deleteNotifyLogJob", fmt.Sprintf("%d", time.Now().Unix()), 2*time.Minute).Result()
+func (c *Handler) DeleteNotifyRecord(ctx context.Context) error {
+	r, _ := c.svc.Redis.SetNX(ctx, "deleteNotifyLogJob", fmt.Sprintf("%d", time.Now().Unix()), 2*time.Minute).Result()
 	if !r {
-		return
+		return nil
 	}
-	defer c.svc.Redis.Del(NewCtx, "deleteNotifyLogJob")
-	err := c.svc.NotifyRepo.Delete(NewCtx, time.Now().Add(-time.Hour*24))
+	defer c.svc.Redis.Del(ctx, "deleteNotifyLogJob")
+	err := c.svc.NotifyRepo.Delete(ctx, time.Now().Add(-time.Hour*24))
 	if err != nil {
-		log.WithCtx(NewCtx).Error("DeleteNotifyRecord", zap.Error(err))
+		log.WithCtx(ctx).Error("DeleteNotifyRecord", zap.Error(err))
+		return err
 	}
+	return nil
 }
 
 // CronPaymentPushNotifyHandler 支付通知重试
-func (c *CronService) CronPaymentPushNotifyHandler( (ctx context.Context) {
-	r, _ := c.svc.Redis.SetNX(NewCtx, "CronPaymentPushNotifyHandler", fmt.Sprintf("%d", time.Now().Unix()), time.Hour).Result()
+func (c *Handler) CronPaymentPushNotifyHandler(ctx context.Context) error {
+	r, _ := c.svc.Redis.SetNX(ctx, "CronPaymentPushNotifyHandler", fmt.Sprintf("%d", time.Now().Unix()), time.Hour).Result()
 	if !r {
-		return
+		return nil
 	}
-	defer c.svc.Redis.Del(NewCtx, "CronPaymentPushNotifyHandler")
-	l := log.WithCtx(NewCtx)
+	defer c.svc.Redis.Del(ctx, "CronPaymentPushNotifyHandler")
+	l := log.WithCtx(ctx)
 	now := time.Now()
 	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	end := start.AddDate(0, 0, 1)
-	count, err := c.svc.NotifyRepo.CountRetry(NewCtx, start, end, enum.NotifyType_Payment)
+	count, err := c.svc.NotifyRepo.CountRetry(ctx, start, end, enum.NotifyType_Payment)
 	if err != nil || count == 0 {
-		return
+		return nil
 	}
 	var lastId int64
 	for {
-		records, err := c.svc.NotifyRepo.GetRetry(NewCtx, start, end, lastId, 100, enum.NotifyType_Payment)
+		records, err := c.svc.NotifyRepo.GetRetry(ctx, start, end, lastId, 100, enum.NotifyType_Payment)
 		if err != nil || len(records) == 0 {
 			break
 		}
@@ -107,23 +109,23 @@ func (c *CronService) CronPaymentPushNotifyHandler( (ctx context.Context) {
 }
 
 // CronRefundPushNotifyHandler 退款通知重试
-func (c *CronService) CronRefundPushNotifyHandler(ctx context.Context) {
-	r, _ := c.svc.Redis.SetNX(NewCtx, "CronRefundPushNotifyHandler", fmt.Sprintf("%d", time.Now().Unix()), time.Hour).Result()
+func (c *Handler) CronRefundPushNotifyHandler(ctx context.Context) error {
+	r, _ := c.svc.Redis.SetNX(ctx, "CronRefundPushNotifyHandler", fmt.Sprintf("%d", time.Now().Unix()), time.Hour).Result()
 	if !r {
-		return
+		return nil
 	}
-	defer c.svc.Redis.Del(NewCtx, "CronRefundPushNotifyHandler")
-	l := log.WithCtx(NewCtx)
+	defer c.svc.Redis.Del(ctx, "CronRefundPushNotifyHandler")
+	l := log.WithCtx(ctx)
 	now := time.Now()
 	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	end := start.AddDate(0, 0, 1)
-	count, err := c.svc.NotifyRepo.CountRetry(NewCtx, start, end, enum.NotifyType_Refund)
+	count, err := c.svc.NotifyRepo.CountRetry(ctx, start, end, enum.NotifyType_Refund)
 	if err != nil || count == 0 {
-		return
+		return nil
 	}
 	var lastId int64
 	for {
-		records, err := c.svc.NotifyRepo.GetRetry(NewCtx, start, end, lastId, 100, enum.NotifyType_Refund)
+		records, err := c.svc.NotifyRepo.GetRetry(ctx, start, end, lastId, 100, enum.NotifyType_Refund)
 		if err != nil || len(records) == 0 {
 			break
 		}
@@ -145,35 +147,39 @@ func (c *CronService) CronRefundPushNotifyHandler(ctx context.Context) {
 			break
 		}
 	}
+	return nil
 }
 
 // DeleteExpireNotifyRecord 删除过期通知
-func (c *CronService) DeleteExpireNotifyRecord(ctx context.Context) {
-	r, _ := c.svc.Redis.SetNX(NewCtx, "DeleteNotifyRecord", fmt.Sprintf("%d", time.Now().Unix()), time.Hour).Result()
+func (c *Handler) DeleteExpireNotifyRecord(ctx context.Context) error {
+	r, _ := c.svc.Redis.SetNX(ctx, "DeleteNotifyRecord", fmt.Sprintf("%d", time.Now().Unix()), time.Hour).Result()
 	if !r {
-		return
+		return nil
 	}
-	defer c.svc.Redis.Del(NewCtx, "DeleteNotifyRecord")
-	err := c.svc.NotifyRepo.Delete(NewCtx, time.Now().Add(-time.Hour*24))
+	defer c.svc.Redis.Del(ctx, "DeleteNotifyRecord")
+	err := c.svc.NotifyRepo.Delete(ctx, time.Now().Add(-time.Hour*24))
 	if err != nil {
-		log.WithCtx(NewCtx).Error("DeleteExpireNotifyRecord", zap.Error(err))
+		log.WithCtx(ctx).Error("DeleteExpireNotifyRecord", zap.Error(err))
+		return err
 	}
+	return nil
+
 }
 
 // PaymentExpireRecordJob 处理支付过期订单
-func (c *CronService) PaymentExpireRecordJob(ctx context.Context) {
-	r, _ := c.svc.Redis.SetNX(NewCtx, "PaymentExpireRecordJob", fmt.Sprintf("%d", time.Now().Unix()), time.Hour).Result()
+func (c *Handler) PaymentExpireRecordJob(ctx context.Context) error {
+	r, _ := c.svc.Redis.SetNX(ctx, "PaymentExpireRecordJob", fmt.Sprintf("%d", time.Now().Unix()), time.Hour).Result()
 	if !r {
-		return
+		return nil
 	}
-	defer c.svc.Redis.Del(NewCtx, "PaymentExpireRecordJob")
-	l := log.WithCtx(NewCtx)
+	defer c.svc.Redis.Del(ctx, "PaymentExpireRecordJob")
+	l := log.WithCtx(ctx)
 	now := time.Now()
 	start := now.Add(-time.Hour)
 	end := now
 	var lastId int64
 	for {
-		records, err := c.svc.PaymentOrderRepo.GetPaymentExpireRecord(NewCtx, start, end, 100, lastId)
+		records, err := c.svc.PaymentOrderRepo.GetPaymentExpireRecord(ctx, start, end, 100, lastId)
 		if err != nil || len(records) == 0 {
 			break
 		}
@@ -206,30 +212,36 @@ func (c *CronService) PaymentExpireRecordJob(ctx context.Context) {
 			break
 		}
 	}
+	return nil
 }
 
 // DeleteExpireRecord 删除过期支付记录
-func (c *CronService) DeleteExpireRecord() {
-	r, _ := c.svc.Redis.SetNX(NewCtx, "DeleteExpireRecord", fmt.Sprintf("%d", time.Now().Unix()), time.Hour).Result()
+func (c *Handler) DeleteExpireRecord(ctx context.Context) error {
+	r, _ := c.svc.Redis.SetNX(ctx, "DeleteExpireRecord", fmt.Sprintf("%d", time.Now().Unix()), time.Hour).Result()
 	if !r {
-		return
+		return nil
 	}
-	defer c.svc.Redis.Del(NewCtx, "DeleteExpireRecord")
-	err := c.svc.PaymentOrderRepo.DeletePaymentExpireRecord(NewCtx, time.Now().Add(-time.Minute*30))
+	defer c.svc.Redis.Del(ctx, "DeleteExpireRecord")
+	err := c.svc.PaymentOrderRepo.DeletePaymentExpireRecord(ctx, time.Now().Add(-time.Minute*30))
 	if err != nil {
-		log.WithCtx(NewCtx).Error("DeleteExpireRecord", zap.Error(err))
+		log.WithCtx(ctx).Error("DeleteExpireRecord", zap.Error(err))
+		return err
 	}
+	return nil
+
 }
 
 // DeleteExpireRouterRecord 删除过期路由记录
-func (c *CronService) DeleteExpireRouterRecord(ctx context.Context) {
-	r, _ := c.svc.Redis.SetNX(NewCtx, "DeleteExpireRouterRecord", fmt.Sprintf("%d", time.Now().Unix()), time.Hour).Result()
+func (c *Handler) DeleteExpireRouterRecord(ctx context.Context) error {
+	r, _ := c.svc.Redis.SetNX(ctx, "DeleteExpireRouterRecord", fmt.Sprintf("%d", time.Now().Unix()), time.Hour).Result()
 	if !r {
-		return
+		return nil
 	}
-	defer c.svc.Redis.Del(NewCtx, "DeleteExpireRouterRecord")
-	err := c.svc.RouterRepo.DeleteByDate(NewCtx, time.Now().Add(-time.Hour*24*30))
+	defer c.svc.Redis.Del(ctx, "DeleteExpireRouterRecord")
+	err := c.svc.RouterRepo.DeleteByDate(ctx, time.Now().Add(-time.Hour*24*30))
 	if err != nil {
-		log.WithCtx(NewCtx).Error("DeleteExpireRouterRecord", zap.Error(err))
+		log.WithCtx(ctx).Error("DeleteExpireRouterRecord", zap.Error(err))
+		return err
 	}
+	return nil
 }
