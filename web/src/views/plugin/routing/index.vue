@@ -133,6 +133,8 @@
       fixed: 'left',
       slot: 'ruleNo'
     },
+    { prop: 'mchNo', label: '商户编号', minWidth: 140 },
+    { prop: 'appNo', label: '应用编号', minWidth: 140 },
     { prop: 'ruleName', label: '规则名称', minWidth: 180 },
     {
       columnKey: 'ruleStatusSwitch',

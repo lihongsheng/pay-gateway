@@ -15,12 +15,14 @@
             {{ getOptionLabel(ruleStatusOptions, detail.ruleStatus) }}
           </el-tag>
         </el-descriptions-item>
+        <el-descriptions-item label="商户编号">{{ detail.mchNo || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="应用编号">{{ detail.appNo || '-' }}</el-descriptions-item>
         <el-descriptions-item label="规则属性">
           {{ getOptionLabel(ruleAttributeOptions, detail.ruleAttribute) }}
         </el-descriptions-item>
         <el-descriptions-item label="优先级">{{ detail.priority ?? '-' }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ detail.createTime || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="规则描述" :span="3">
+        <el-descriptions-item label="规则描述">
           {{ detail.ruleDesc || '-' }}
         </el-descriptions-item>
       </el-descriptions>

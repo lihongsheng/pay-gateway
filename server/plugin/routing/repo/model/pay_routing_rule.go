@@ -17,7 +17,7 @@ type PayRoutingRule struct {
 	RuleAttribute      string                    `gorm:"column:rule_attribute;type:varchar(32);not null;comment:single_merchant/multi_merchant" json:"rule_attribute"` // 规则属性
 	ConditionLogic     string                    `gorm:"column:condition_logic;type:varchar(16);not null;default:AND;comment:条件逻辑" json:"condition_logic"`         // 条件逻辑
 	RuleJSON           string                    `gorm:"column:rule_json;type:json;comment:嵌套规则JSON（QueryBuilder格式）" json:"rule_json"`                           // 嵌套规则JSON
-	RuleAttributeValue string                    `gorm:"column:rule_attribute_value;type:json;default:{};" json:"rule_attribute_value"`                                // 规则属性
+	RuleAttributeValue string                    `gorm:"column:rule_attribute_value;type:json;default:{};" json:"rule_attribute_value"`                                // 规则属性结构值
 	Priority           int                       `gorm:"column:priority;type:int unsigned;not null;default:100" json:"priority"`                                       // 优先级
 	CreateBy           int                       `gorm:"column:create_by;type:int unsigned;not null;default:0;comment:创建人" json:"create_by"`                        // 创建人
 	UpdateBy           int                       `gorm:"column:update_by;type:int unsigned;not null;default:0;comment:更新人" json:"update_by"`                        // 更新人

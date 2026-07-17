@@ -25,7 +25,47 @@
         </div>
         <div class="card-body">
           <el-row :gutter="16">
-            <el-col :xs="24" :md="12">
+            <el-col v-if="isPlatform" :xs="24" :md="8">
+              <el-form-item label="商户" prop="mchNo">
+                <el-select
+                  v-model="form.mchNo"
+                  filterable
+                  clearable
+                  class="ele-fluid"
+                  placeholder="请选择商户"
+                  :loading="mchLoading"
+                  @change="handleMchChange"
+                >
+                  <el-option
+                    v-for="item in mchOptions"
+                    :key="item.mch_no"
+                    :label="item.mch_no + ' (' + item.mch_name + ')'"
+                    :value="item.mch_no"
+                  />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :md="isPlatform ? 8 : 12">
+              <el-form-item label="应用" prop="appNo">
+                <el-select
+                  v-model="form.appNo"
+                  filterable
+                  clearable
+                  class="ele-fluid"
+                  placeholder="请选择应用"
+                  :loading="appLoading"
+                  :disabled="isPlatform && !form.mchNo"
+                >
+                  <el-option
+                    v-for="item in appOptions"
+                    :key="item.app_no"
+                    :label="item.app_no + ' (' + item.app_name + ')'"
+                    :value="item.app_no"
+                  />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :md="isPlatform ? 8 : 12">
               <el-form-item label="规则名称" prop="ruleName">
                 <el-input
                   v-model.trim="form.ruleName"
@@ -157,7 +197,7 @@
 </template>
 
 <script setup>
-  import { computed, reactive, ref, onUnmounted } from 'vue';
+  import { computed, reactive, ref, onUnmounted, onMounted } from 'vue';
   import { EleMessage, useModal } from 'ele-admin-plus';
   import { scrollToFirstFormError } from '@/utils/common';
   import {
@@ -166,6 +206,9 @@
     getRoutingRule,
     listAvailableSingleAccounts
   } from '@/api/routing';
+  import { mchList } from '@/api/system';
+  import { appList } from '@/api/payment';
+  import { useUserStore } from '@/store/modules/user';
   import { RuleBuilder, useRuleSchema, validateRuleJson, createGroupRule } from '@/components/RuleBuilder';
 
   const props = defineProps({
@@ -176,11 +219,25 @@
   });
 
   const { modalProps, closeModal } = useModal();
+  const userStore = useUserStore();
   const isUpdate = computed(() => !!props.data?.id);
+
+  // 判断是否为平台用户
+  const isPlatform = computed(() => {
+    const userInfo = userStore.userInfo;
+    return !userInfo || userInfo.system_type === 0;
+  });
+
   const loading = ref(false);
   const detailLoading = ref(false);
   const formRef = ref(null);
   const availableAccounts = ref([]);
+
+  // 商户/应用下拉选项
+  const mchOptions = ref([]);
+  const appOptions = ref([]);
+  const mchLoading = ref(false);
+  const appLoading = ref(false);
 
   // 组件是否已卸载的标志，防止卸载后异步回调修改状态
   let unmounted = false;
@@ -198,6 +255,8 @@
 
   const form = reactive({
     id: void 0,
+    mchNo: '',
+    appNo: '',
     ruleName: '',
     ruleDesc: '',
     ruleAttribute: 'multi_merchant',
@@ -207,9 +266,85 @@
   });
 
   const rules = reactive({
+    mchNo: [{ required: true, message: '请选择商户', trigger: 'change' }],
+    appNo: [{ required: true, message: '请选择应用', trigger: 'change' }],
     ruleName: [{ required: true, message: '请输入规则名称', trigger: 'blur' }],
     ruleDesc: [{ required: true, message: '请输入规则描述', trigger: 'blur' }],
     ruleAttribute: [{ required: true, message: '请选择规则属性', trigger: 'change' }]
+  });
+
+  // 商户用户 mchNo 自动填充，不需要校验
+  // el-form 只校验存在的 form-item，v-if 隐藏的字段不会被校验
+
+  // ─── 商户/应用加载 ───────────────────────────────────────────
+
+  const loadMchList = () => {
+    if (!isPlatform.value) return; // 商户用户不需要加载商户列表
+    mchLoading.value = true;
+    mchList({ page: 1, page_size: 500 })
+      .then((res) => {
+        if (unmounted) return;
+        mchOptions.value = res?.data?.list ?? res?.list ?? [];
+      })
+      .catch((e) => {
+        if (unmounted) return;
+        EleMessage.error({ message: '获取商户列表失败', plain: true });
+      })
+      .finally(() => {
+        if (!unmounted) mchLoading.value = false;
+      });
+  };
+
+  const loadAppList = (mchNo) => {
+    if (!mchNo) {
+      appOptions.value = [];
+      return;
+    }
+    appLoading.value = true;
+    appList({ mch_no: mchNo, page: 1, page_size: 500 })
+      .then((res) => {
+        if (unmounted) return;
+        appOptions.value = res?.data?.list ?? res?.list ?? [];
+      })
+      .catch((e) => {
+        if (unmounted) return;
+        EleMessage.error({ message: '获取应用列表失败', plain: true });
+      })
+      .finally(() => {
+        if (!unmounted) appLoading.value = false;
+      });
+  };
+
+  const handleMchChange = (mchNo) => {
+    form.appNo = ''; // 切换商户时清空应用
+    loadAppList(mchNo);
+  };
+
+  // 商户用户加载应用列表（不传 mch_no，后端自动筛选）
+  const loadAppListForMch = () => {
+    appLoading.value = true;
+    appList({ page: 1, page_size: 500 })
+      .then((res) => {
+        if (unmounted) return;
+        appOptions.value = res?.data?.list ?? res?.list ?? [];
+      })
+      .catch((e) => {
+        if (unmounted) return;
+        EleMessage.error({ message: '获取应用列表失败', plain: true });
+      })
+      .finally(() => {
+        if (!unmounted) appLoading.value = false;
+      });
+  };
+
+  // 初始化：平台用户加载商户列表，商户用户直接加载应用列表
+  onMounted(() => {
+    if (isPlatform.value) {
+      loadMchList();
+    } else {
+      // 商户用户：不传 mch_no，后端会自动根据当前用户筛选
+      loadAppListForMch();
+    }
   });
 
   const loadAvailableAccounts = () => {
@@ -246,6 +381,8 @@
 
   const assignData = (data) => {
     form.id = data.id;
+    form.mchNo = data.mchNo ?? '';
+    form.appNo = data.appNo ?? '';
     form.ruleName = data.ruleName ?? '';
     form.ruleDesc = data.ruleDesc ?? '';
     form.ruleAttribute = data.ruleAttribute ?? 'multi_merchant';
@@ -268,6 +405,14 @@
     }));
     if (!form.actions.length) {
       form.actions = [createAction()];
+    }
+
+    // 加载关联的应用列表
+    if (form.mchNo) {
+      loadAppList(form.mchNo);
+    } else if (!isPlatform.value) {
+      // 商户用户编辑已有规则但没有 mchNo（兼容旧数据），加载全部应用
+      loadAppListForMch();
     }
     handleAttributeChange();
   };
@@ -354,6 +499,8 @@
       }
       loading.value = true;
       const payload = {
+        mchNo: form.mchNo,
+        appNo: form.appNo,
         ruleName: form.ruleName,
         ruleDesc: form.ruleDesc,
         ruleAttribute: form.ruleAttribute,

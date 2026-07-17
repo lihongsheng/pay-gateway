@@ -240,7 +240,8 @@ func (a *aggregateService) getAccount(ctx context.Context, req *public.Aggregate
 		filterAccountNo = strings.Split(req.FilterAccountNo, ",")
 	}
 	var lastAvailable *entity.PaymentAccount
-	available, lastAvailable, err = a.domainRouter.Router(ctx, available, app, filterAccountNo)
+	available, lastAvailable, err = a.domainRouter.
+		Router(ctx, available, app, filterAccountNo)
 	if err != nil {
 		l.Error("GetRedirectUrlRouter", zap.Error(err), zap.String("app_no", app.AppNo), zap.Any("req", req))
 		// 兜底，保障使用最早的一个。GetByAccountNoFormCache 是倒序。
