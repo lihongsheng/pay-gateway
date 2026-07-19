@@ -1,5 +1,5 @@
 <template>
-  <ele-page>
+  <div class="routing-page">
     <el-row :gutter="16" class="routing-summary page-section">
       <el-col
         v-for="item in summaryCards"
@@ -9,10 +9,11 @@
         :md="6"
         :lg="4"
       >
-        <ele-card
+        <el-card
           :body-style="{ padding: '16px 18px' }"
           class="summary-card"
           :class="[`is-${item.type}`, { 'is-active': activeSummaryKey === item.key }]"
+          shadow="hover"
           @click="item.onClick?.()"
         >
           <div class="summary-head">
@@ -21,96 +22,136 @@
           </div>
           <div class="summary-value">{{ item.value }}</div>
           <div class="summary-desc">{{ item.desc }}</div>
-        </ele-card>
+        </el-card>
       </el-col>
     </el-row>
 
     <routing-search @search="(where) => reload(where, 1)" />
 
-    <ele-card class="table-section" :body-style="{ paddingTop: '8px' }">
-      <ele-pro-table
+    <el-card class="table-section" :body-style="{ paddingTop: '8px' }" shadow="never">
+      <div class="table-toolbar">
+        <el-button type="primary" @click="handleAdd">
+          <el-icon><Plus /></el-icon>新增规则
+        </el-button>
+      </div>
+
+      <el-table
         ref="tableRef"
+        v-loading="tableLoading"
+        :data="tableData"
         row-key="id"
-        :columns="columns"
-        :datasource="datasource"
         :show-overflow-tooltip="true"
         :highlight-current-row="true"
-        v-model:selections="selections"
-        :export-config="{ fileName: '路由策略' }"
-        cache-key="routingRuleTableV2"
+        @selection-change="selections = $event"
       >
-        <template #toolbar>
-          <btn-items
-            :items="[
-              {
-                preset: 'add',
-                title: '新增规则',
-                onClick: () => handleAdd()
-              }
-            ]"
-          />
-        </template>
+        <el-table-column type="selection" width="50" align="center" fixed="left" />
+        <el-table-column type="index" label="#" width="50" align="center" fixed="left" />
+        <el-table-column prop="ruleNo" label="规则ID" min-width="130" fixed="left">
+          <template #default="{ row }">
+            <el-link type="primary" @click="handleDetail(row)">{{ row.ruleNo }}</el-link>
+          </template>
+        </el-table-column>
+        <el-table-column prop="mchNo" label="商户编号" min-width="140" />
+        <el-table-column prop="appNo" label="应用编号" min-width="140" />
+        <el-table-column prop="ruleName" label="规则名称" min-width="180" />
+        <el-table-column label="状态开关" width="100" align="center">
+          <template #default="{ row }">
+            <el-tooltip :content="getOptionLabel(row.ruleStatus)" placement="top">
+              <el-switch
+                size="small"
+                :model-value="row.ruleStatus === 'active'"
+                @change="(value) => handleToggleStatus(row, value)"
+              />
+            </el-tooltip>
+          </template>
+        </el-table-column>
+        <el-table-column label="规则状态" width="110" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getRuleStatusType(row.ruleStatus)">
+              {{ getOptionLabel(row.ruleStatus) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="规则属性" width="130">
+          <template #default="{ row }">
+            {{ getOptionLabel(row.ruleAttribute, 'ruleAttribute') }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="ruleDesc" label="规则描述" min-width="220" />
+        <el-table-column prop="priority" label="优先级" width="90" align="center" />
+        <el-table-column prop="createTime" label="创建时间" width="180" align="center" />
+        <el-table-column label="操作" width="150" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link @click.stop="handleDetail(row)">查看</el-button>
+            <el-button type="primary" link @click.stop="handleEdit(row)">编辑</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
 
-        <template #ruleNo="{ row }">
-          <el-link type="primary" @click="handleDetail(row)">{{ row.ruleNo }}</el-link>
-        </template>
+      <div class="table-pagination">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.limit"
+          :total="pagination.total"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          background
+          @size-change="onPageSizeChange"
+          @current-change="onPageChange"
+        />
+      </div>
+    </el-card>
 
-        <template #ruleStatus="{ row }">
-          <el-tooltip
-            :content="getOptionLabel(row.ruleStatus)"
-            placement="top"
-          >
-            <el-switch
-              size="small"
-              :model-value="row.ruleStatus === 'active'"
-              @change="(value) => handleToggleStatus(row, value)"
-            />
-          </el-tooltip>
-        </template>
+    <!-- 编辑抽屉 -->
+    <routing-edit
+      v-if="editVisible"
+      :visible="editVisible"
+      :data="editData"
+      @close="editVisible = false"
+      @done="onEditDone"
+    />
 
-        <template #ruleAttribute="{ row }">
-          {{ getOptionLabel(row.ruleAttribute, 'ruleAttribute') }}
-        </template>
-
-        <template #statusTag="{ row }">
-          <el-tag :type="getRuleStatusType(row.ruleStatus)">
-            {{ getOptionLabel(row.ruleStatus) }}
-          </el-tag>
-        </template>
-
-        <template #action="{ row }">
-          <el-space :size="6" spacer="|">
-            <el-button type="primary" link @click.stop="handleDetail(row)">
-              查看
-            </el-button>
-            <el-button type="primary" link @click.stop="handleEdit(row)">
-              编辑
-            </el-button>
-          </el-space>
-        </template>
-      </ele-pro-table>
-    </ele-card>
-  </ele-page>
+    <!-- 详情弹窗 -->
+    <routing-detail
+      v-if="detailVisible"
+      :visible="detailVisible"
+      :data="detailData"
+      @close="detailVisible = false"
+    />
+  </div>
 </template>
 
 <script setup>
-  import { computed, ref } from 'vue';
-  import { ElMessageBox } from 'element-plus';
-  import { EleMessage, useModal } from 'ele-admin-plus';
+  import { computed, ref, onMounted } from 'vue';
+  import { ElMessage, ElMessageBox } from 'element-plus';
+  import { Plus } from '@element-plus/icons-vue';
   import {
     pageRoutingRules,
     toggleRoutingRuleStatus
-  } from '@/api/routing';
+  } from './api/routing';
   import RoutingSearch from './components/routing-search.vue';
-  import { useRuleSchema } from '@/components/RuleBuilder';
+  import RoutingEdit from './components/routing-edit.vue';
+  import RoutingDetail from './components/routing-detail.vue';
+  import { useRuleSchema } from './RuleBuilder';
 
   defineOptions({ name: 'RoutingRule' });
 
-  const { openModal } = useModal();
   const tableRef = ref(null);
   const selections = ref([]);
   const summary = ref({});
   const activeSummaryKey = ref('all');
+  const tableLoading = ref(false);
+  const tableData = ref([]);
+  const currentWhere = ref({});
+  const pagination = ref({ page: 1, limit: 10, total: 0 });
+
+  // 编辑抽屉
+  const editVisible = ref(false);
+  const editData = ref(null);
+
+  // 详情弹窗
+  const detailVisible = ref(false);
+  const detailData = ref(null);
 
   const { ruleStatusOptions, ruleAttributeOptions } = useRuleSchema();
 
@@ -122,59 +163,6 @@
   const getRuleStatusType = (value) => {
     return ruleStatusOptions.value?.find((item) => item.value === value)?.type ?? 'info';
   };
-
-  const columns = ref([
-    { type: 'selection', columnKey: 'selection', width: 50, align: 'center', fixed: 'left' },
-    { type: 'index', columnKey: 'index', width: 50, align: 'center', fixed: 'left' },
-    {
-      prop: 'ruleNo',
-      label: '规则ID',
-      minWidth: 130,
-      fixed: 'left',
-      slot: 'ruleNo'
-    },
-    { prop: 'mchNo', label: '商户编号', minWidth: 140 },
-    { prop: 'appNo', label: '应用编号', minWidth: 140 },
-    { prop: 'ruleName', label: '规则名称', minWidth: 180 },
-    {
-      columnKey: 'ruleStatusSwitch',
-      prop: 'ruleStatus',
-      label: '状态开关',
-      width: 100,
-      align: 'center',
-      slot: 'ruleStatus',
-      formatter: (row) => getOptionLabel(row.ruleStatus)
-    },
-    {
-      columnKey: 'ruleStatusTag',
-      prop: 'ruleStatus',
-      label: '规则状态',
-      width: 110,
-      align: 'center',
-      slot: 'statusTag',
-      formatter: (row) => getOptionLabel(row.ruleStatus)
-    },
-    {
-      prop: 'ruleAttribute',
-      label: '规则属性',
-      width: 130,
-      slot: 'ruleAttribute',
-      formatter: (row) => getOptionLabel(row.ruleAttribute, 'ruleAttribute')
-    },
-    { prop: 'ruleDesc', label: '规则描述', minWidth: 220 },
-    { prop: 'priority', label: '优先级', width: 90, align: 'center' },
-    { prop: 'createTime', label: '创建时间', width: 180, align: 'center' },
-    {
-      columnKey: 'action',
-      label: '操作',
-      width: 150,
-      align: 'center',
-      slot: 'action',
-      fixed: 'right',
-      hideInPrint: true,
-      hideInExport: true
-    }
-  ]);
 
   const selectSummary = (key, where) => {
     activeSummaryKey.value = key;
@@ -224,17 +212,40 @@
     }
   ]);
 
-  const datasource = async ({ pages, where, orders }) => {
-    const data = await pageRoutingRules({ ...where, ...orders, ...pages });
-    summary.value = data.summary ?? {};
-    return {
-      rows: data.rows ?? [],
-      total: data.total ?? data.rows?.length ?? 0
-    };
+  const fetchData = async () => {
+    tableLoading.value = true;
+    try {
+      const { page, limit } = pagination.value;
+      const data = await pageRoutingRules({
+        ...currentWhere.value,
+        page,
+        limit
+      });
+      tableData.value = data.rows ?? [];
+      pagination.value.total = data.total ?? data.rows?.length ?? 0;
+      summary.value = data.summary ?? {};
+    } catch (e) {
+      ElMessage.error(e.message);
+    } finally {
+      tableLoading.value = false;
+    }
   };
 
   const reload = (where, page) => {
-    tableRef.value?.reload?.({ where, page });
+    if (where !== undefined) currentWhere.value = where;
+    if (page !== undefined) pagination.value.page = page;
+    fetchData();
+  };
+
+  const onPageSizeChange = (size) => {
+    pagination.value.limit = size;
+    pagination.value.page = 1;
+    fetchData();
+  };
+
+  const onPageChange = (page) => {
+    pagination.value.page = page;
+    fetchData();
   };
 
   const handleToggleStatus = (row, value) => {
@@ -246,16 +257,16 @@
       { type: 'warning', draggable: true }
     )
       .then(() => {
-        const loading = EleMessage.loading({ message: '请求中..', plain: true });
+        const loading = ElMessage({ message: '请求中..', type: 'loading' });
         toggleRoutingRuleStatus(row.id, nextStatus)
           .then(() => {
             loading.close();
-            EleMessage.success({ message: '规则状态已更新', plain: true });
+            ElMessage.success('规则状态已更新');
             reload();
           })
           .catch((e) => {
             loading.close();
-            EleMessage.error({ message: e.message, plain: true });
+            ElMessage.error(e.message);
             reload();
           });
       })
@@ -266,43 +277,61 @@
 
   /** 新增规则 */
   const handleAdd = () => {
-    openModal({
-      custom: true,
-      asyncComponent: () => import('./components/routing-edit.vue'),
-      componentProps: { onDone: () => reload() }
-    });
+    editData.value = null;
+    editVisible.value = true;
   };
 
   /** 编辑规则 */
   const handleEdit = (row) => {
     if (row?.ruleStatus === 'active') {
-      EleMessage.warning({ message: '当前状态下不支持编辑', plain: true });
+      ElMessage.warning('当前状态下不支持编辑');
       return;
     }
-    openModal({
-      custom: true,
-      asyncComponent: () => import('./components/routing-edit.vue'),
-      componentProps: { data: row, onDone: () => reload() }
-    });
+    editData.value = row;
+    editVisible.value = true;
   };
 
   /** 查看详情 */
   const handleDetail = (row) => {
-    openModal({
-      custom: true,
-      asyncComponent: () => import('./components/routing-detail.vue'),
-      componentProps: { data: row }
-    });
+    detailData.value = row;
+    detailVisible.value = true;
   };
+
+  /** 编辑完成回调 */
+  const onEditDone = () => {
+    editVisible.value = false;
+    reload();
+  };
+
+  onMounted(() => {
+    fetchData();
+  });
 </script>
 
 <style lang="scss" scoped>
+  .routing-page {
+    min-height: 100%;
+  }
+
   .page-section {
     margin-bottom: 16px;
   }
 
   .table-section {
     margin-bottom: 0;
+  }
+
+  .table-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-bottom: 12px;
+  }
+
+  .table-pagination {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 16px;
   }
 
   .routing-summary {
@@ -323,10 +352,6 @@
       border-color 0.2s ease,
       box-shadow 0.2s ease,
       background-color 0.2s ease;
-  }
-
-  .routing-summary :deep(.ele-card) {
-    margin-bottom: 0 !important;
   }
 
   .summary-card::after {

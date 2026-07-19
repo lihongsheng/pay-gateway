@@ -1,5 +1,5 @@
 import { ref, onMounted } from 'vue'
-import { getRoutingSchema } from '@/api/routing'
+import { getRoutingSchema } from '@/views/plugin/routing/api/routing'
 import RuleBuilder from './RuleBuilder.vue'
 
 // 导出 RuleBuilder 组件

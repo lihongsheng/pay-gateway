@@ -1,224 +1,229 @@
 <template>
-  <ele-drawer
+  <el-drawer
+    v-model="drawerVisible"
     :size="960"
     :title="isUpdate ? '编辑路由规则' : '新建路由规则'"
-    :loading="loading || detailLoading || schemaLoading"
-    :body-style="{ padding: '16px 20px' }"
-    :footer-style="{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }"
-    v-bind="modalProps"
     :close-on-click-modal="false"
+    direction="rtl"
+    @close="handleClose"
   >
-    <el-form
-      ref="formRef"
-      :model="form"
-      :rules="rules"
-      label-position="top"
-      @submit.prevent=""
-    >
-      <section class="edit-card">
-        <div class="card-head">
-          <div class="card-title">
-            <span class="section-bar"></span>
-            <span>基础信息</span>
-            <em>填写规则的基本属性</em>
-          </div>
-        </div>
-        <div class="card-body">
-          <el-row :gutter="16">
-            <el-col v-if="isPlatform" :xs="24" :md="8">
-              <el-form-item label="商户" prop="mchNo">
-                <el-select
-                  v-model="form.mchNo"
-                  filterable
-                  clearable
-                  class="ele-fluid"
-                  placeholder="请选择商户"
-                  :loading="mchLoading"
-                  @change="handleMchChange"
-                >
-                  <el-option
-                    v-for="item in mchOptions"
-                    :key="item.mch_no"
-                    :label="item.mch_no + ' (' + item.mch_name + ')'"
-                    :value="item.mch_no"
-                  />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :xs="24" :md="isPlatform ? 8 : 12">
-              <el-form-item label="应用" prop="appNo">
-                <el-select
-                  v-model="form.appNo"
-                  filterable
-                  clearable
-                  class="ele-fluid"
-                  placeholder="请选择应用"
-                  :loading="appLoading"
-                  :disabled="isPlatform && !form.mchNo"
-                >
-                  <el-option
-                    v-for="item in appOptions"
-                    :key="item.app_no"
-                    :label="item.app_no + ' (' + item.app_name + ')'"
-                    :value="item.app_no"
-                  />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :xs="24" :md="isPlatform ? 8 : 12">
-              <el-form-item label="规则名称" prop="ruleName">
-                <el-input
-                  v-model.trim="form.ruleName"
-                  clearable
-                  maxlength="50"
-                  show-word-limit
-                  placeholder="请输入规则名称，如：AE卡组美金收单规则"
-                />
-              </el-form-item>
-            </el-col>
-            <el-col :xs="24" :md="6">
-              <el-form-item label="规则属性" prop="ruleAttribute">
-                <el-select
-                  v-model="form.ruleAttribute"
-                  class="ele-fluid"
-                  placeholder="请选择规则属性"
-                  @change="handleAttributeChange"
-                >
-                  <el-option
-                    v-for="item in ruleAttributeOptions"
-                    :key="item.value"
-                    :label="item.label"
-                    :value="item.value"
-                  />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :xs="24" :md="6">
-              <el-form-item label="优先级">
-                <el-input-number
-                  v-model="form.priority"
-                  :min="1"
-                  :max="9999"
-                  controls-position="right"
-                  class="ele-fluid"
-                />
-              </el-form-item>
-            </el-col>
-            <el-col :span="24">
-              <el-form-item label="规则描述" prop="ruleDesc">
-                <el-input
-                  v-model.trim="form.ruleDesc"
-                  maxlength="500"
-                  show-word-limit
-                  :rows="4"
-                  type="textarea"
-                  placeholder="请输入规则描述，说明规则的用途和匹配逻辑..."
-                />
-              </el-form-item>
-            </el-col>
-          </el-row>
-        </div>
-      </section>
-
-      <section class="edit-card">
-        <div class="card-head">
-          <div class="card-title">
-            <span class="section-bar"></span>
-            <span>规则配置</span>
-            <em>设置匹配条件与执行动作</em>
-          </div>
-        </div>
-        <div class="card-body rule-builder-section">
-          <div class="builder-block">
-            <div class="builder-title">
-              <span>匹配条件</span>
-              <em>支持多层嵌套的 AND/OR 条件组合</em>
+    <div v-loading="loading || detailLoading || schemaLoading" class="drawer-body">
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-position="top"
+        @submit.prevent=""
+      >
+        <section class="edit-card">
+          <div class="card-head">
+            <div class="card-title">
+              <span class="section-bar"></span>
+              <span>基础信息</span>
+              <em>填写规则的基本属性</em>
             </div>
-            <RuleBuilder
-              v-model="form.rules"
-              :external-schema="schema"
-              :disabled="false"
-            />
           </div>
+          <div class="card-body">
+            <el-row :gutter="16">
+              <el-col v-if="isPlatform" :xs="24" :md="8">
+                <el-form-item label="商户" prop="mchNo">
+                  <el-select
+                    v-model="form.mchNo"
+                    filterable
+                    clearable
+                    style="width: 100%"
+                    placeholder="请选择商户"
+                    :loading="mchLoading"
+                    @change="handleMchChange"
+                  >
+                    <el-option
+                      v-for="item in mchOptions"
+                      :key="item.mch_no"
+                      :label="item.mch_no + ' (' + item.mch_name + ')'"
+                      :value="item.mch_no"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :xs="24" :md="isPlatform ? 8 : 12">
+                <el-form-item label="应用" prop="appNo">
+                  <el-select
+                    v-model="form.appNo"
+                    filterable
+                    clearable
+                    style="width: 100%"
+                    placeholder="请选择应用"
+                    :loading="appLoading"
+                    :disabled="isPlatform && !form.mchNo"
+                  >
+                    <el-option
+                      v-for="item in appOptions"
+                      :key="item.app_no"
+                      :label="item.app_no + ' (' + item.app_name + ')'"
+                      :value="item.app_no"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :xs="24" :md="isPlatform ? 8 : 12">
+                <el-form-item label="规则名称" prop="ruleName">
+                  <el-input
+                    v-model.trim="form.ruleName"
+                    clearable
+                    maxlength="50"
+                    show-word-limit
+                    placeholder="请输入规则名称，如：AE卡组美金收单规则"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :xs="24" :md="6">
+                <el-form-item label="规则属性" prop="ruleAttribute">
+                  <el-select
+                    v-model="form.ruleAttribute"
+                    style="width: 100%"
+                    placeholder="请选择规则属性"
+                    @change="handleAttributeChange"
+                  >
+                    <el-option
+                      v-for="item in ruleAttributeOptions"
+                      :key="item.value"
+                      :label="item.label"
+                      :value="item.value"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :xs="24" :md="6">
+                <el-form-item label="优先级">
+                  <el-input-number
+                    v-model="form.priority"
+                    :min="1"
+                    :max="9999"
+                    controls-position="right"
+                    style="width: 100%"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="24">
+                <el-form-item label="规则描述" prop="ruleDesc">
+                  <el-input
+                    v-model.trim="form.ruleDesc"
+                    maxlength="500"
+                    show-word-limit
+                    :rows="4"
+                    type="textarea"
+                    placeholder="请输入规则描述，说明规则的用途和匹配逻辑..."
+                  />
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </div>
+        </section>
 
-          <div class="then-divider"><span>THEN</span></div>
-
-          <div class="builder-block action-block">
-            <div class="builder-title">
-              <span>执行动作</span>
-              <em>命中规则后的收单账号选择方式</em>
+        <section class="edit-card">
+          <div class="card-head">
+            <div class="card-title">
+              <span class="section-bar"></span>
+              <span>规则配置</span>
+              <em>设置匹配条件与执行动作</em>
             </div>
-            <div class="action-row">
-              <div class="action-label">收单账号</div>
-              <el-select
-                :model-value="form.ruleAttribute === 'single_merchant' ? '指定为' : '自动分配'"
-                disabled
-                class="action-operator"
-              >
-                <el-option label="指定为" value="指定为" />
-                <el-option label="自动分配" value="自动分配" />
-              </el-select>
-              <el-select
-                v-if="form.ruleAttribute === 'single_merchant'"
-                v-model="form.actions[0].paypalAccountNo"
-                filterable
-                clearable
-                class="action-value"
-                placeholder="请选择单商户收单账号"
-              >
-                <el-option
-                  v-for="account in availableAccounts"
-                  :key="account.accountNo"
-                  :label="`${account.accountNo} / ${account.accountEmail}`"
-                  :value="account.accountNo"
-                />
-              </el-select>
-              <el-input
-                v-else
-                model-value="由路由引擎按账号属性、额度、风险和评分自动分配"
-                disabled
-                class="action-value"
+          </div>
+          <div class="card-body rule-builder-section">
+            <div class="builder-block">
+              <div class="builder-title">
+                <span>匹配条件</span>
+                <em>支持多层嵌套的 AND/OR 条件组合</em>
+              </div>
+              <RuleBuilder
+                v-model="form.rules"
+                :external-schema="schema"
+                :disabled="false"
               />
             </div>
+
+            <div class="then-divider"><span>THEN</span></div>
+
+            <div class="builder-block action-block">
+              <div class="builder-title">
+                <span>执行动作</span>
+                <em>命中规则后的收单账号选择方式</em>
+              </div>
+              <div class="action-row">
+                <div class="action-label">收单账号</div>
+                <el-select
+                  :model-value="form.ruleAttribute === 'single_merchant' ? '指定为' : '自动分配'"
+                  disabled
+                  class="action-operator"
+                >
+                  <el-option label="指定为" value="指定为" />
+                  <el-option label="自动分配" value="自动分配" />
+                </el-select>
+                <el-select
+                  v-if="form.ruleAttribute === 'single_merchant'"
+                  v-model="form.actions[0].paypalAccountNo"
+                  filterable
+                  clearable
+                  class="action-value"
+                  placeholder="请选择单商户收单账号"
+                >
+                  <el-option
+                    v-for="account in availableAccounts"
+                    :key="account.accountNo"
+                    :label="`${account.accountNo} / ${account.accountEmail}`"
+                    :value="account.accountNo"
+                  />
+                </el-select>
+                <el-input
+                  v-else
+                  model-value="由路由引擎按账号属性、额度、风险和评分自动分配"
+                  disabled
+                  class="action-value"
+                />
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
-    </el-form>
+        </section>
+      </el-form>
+    </div>
 
     <template #footer>
-      <btn-items
-        :items="[
-          { preset: 'cancel', onClick: () => handleCancel() },
-          { preset: 'save', onClick: () => handleSave() }
-        ]"
-      />
+      <div class="drawer-footer">
+        <el-button @click="handleCancel">取消</el-button>
+        <el-button type="primary" :loading="loading" @click="handleSave">保存</el-button>
+      </div>
     </template>
-  </ele-drawer>
+  </el-drawer>
 </template>
 
 <script setup>
-  import { computed, reactive, ref, onUnmounted, onMounted } from 'vue';
-  import { EleMessage, useModal } from 'ele-admin-plus';
-  import { scrollToFirstFormError } from '@/utils/common';
+  import { computed, reactive, ref, onUnmounted, onMounted, watch } from 'vue';
+  import { ElMessage } from 'element-plus';
+  import { scrollToFirstFormError } from './user-form-data.js';
   import {
     addRoutingRule,
     updateRoutingRule,
     getRoutingRule,
     listAvailableSingleAccounts
-  } from '@/api/routing';
+  } from '../api/routing';
   import { mchList } from '@/api/system';
   import { appList } from '@/api/payment';
   import { useUserStore } from '@/store/modules/user';
-  import { RuleBuilder, useRuleSchema, validateRuleJson, createGroupRule } from '@/components/RuleBuilder';
+  import { RuleBuilder, useRuleSchema, validateRuleJson, createGroupRule } from '../RuleBuilder';
 
   const props = defineProps({
+    /** 控制抽屉显示 */
+    visible: Boolean,
     /** 编辑时传入行数据，新增时为空 */
-    data: Object,
-    /** 保存成功后的回调 */
-    onDone: Function
+    data: Object
   });
 
-  const { modalProps, closeModal } = useModal();
+  const emit = defineEmits(['close', 'done']);
+
+  const drawerVisible = computed({
+    get: () => props.visible,
+    set: (val) => { if (!val) emit('close'); }
+  });
+
   const userStore = useUserStore();
   const isUpdate = computed(() => !!props.data?.id);
 
@@ -273,22 +278,19 @@
     ruleAttribute: [{ required: true, message: '请选择规则属性', trigger: 'change' }]
   });
 
-  // 商户用户 mchNo 自动填充，不需要校验
-  // el-form 只校验存在的 form-item，v-if 隐藏的字段不会被校验
-
   // ─── 商户/应用加载 ───────────────────────────────────────────
 
   const loadMchList = () => {
-    if (!isPlatform.value) return; // 商户用户不需要加载商户列表
+    if (!isPlatform.value) return;
     mchLoading.value = true;
     mchList({ page: 1, page_size: 500 })
       .then((res) => {
         if (unmounted) return;
         mchOptions.value = res?.data?.list ?? res?.list ?? [];
       })
-      .catch((e) => {
+      .catch(() => {
         if (unmounted) return;
-        EleMessage.error({ message: '获取商户列表失败', plain: true });
+        ElMessage.error('获取商户列表失败');
       })
       .finally(() => {
         if (!unmounted) mchLoading.value = false;
@@ -306,9 +308,9 @@
         if (unmounted) return;
         appOptions.value = res?.data?.list ?? res?.list ?? [];
       })
-      .catch((e) => {
+      .catch(() => {
         if (unmounted) return;
-        EleMessage.error({ message: '获取应用列表失败', plain: true });
+        ElMessage.error('获取应用列表失败');
       })
       .finally(() => {
         if (!unmounted) appLoading.value = false;
@@ -316,7 +318,7 @@
   };
 
   const handleMchChange = (mchNo) => {
-    form.appNo = ''; // 切换商户时清空应用
+    form.appNo = '';
     loadAppList(mchNo);
   };
 
@@ -328,9 +330,9 @@
         if (unmounted) return;
         appOptions.value = res?.data?.list ?? res?.list ?? [];
       })
-      .catch((e) => {
+      .catch(() => {
         if (unmounted) return;
-        EleMessage.error({ message: '获取应用列表失败', plain: true });
+        ElMessage.error('获取应用列表失败');
       })
       .finally(() => {
         if (!unmounted) appLoading.value = false;
@@ -342,7 +344,6 @@
     if (isPlatform.value) {
       loadMchList();
     } else {
-      // 商户用户：不传 mch_no，后端会自动根据当前用户筛选
       loadAppListForMch();
     }
   });
@@ -355,7 +356,7 @@
       })
       .catch((e) => {
         if (unmounted) return;
-        EleMessage.error({ message: e.message, plain: true });
+        ElMessage.error(e.message);
       });
   };
 
@@ -388,11 +389,9 @@
     form.ruleAttribute = data.ruleAttribute ?? 'multi_merchant';
     form.priority = data.priority ?? 100;
 
-    // 优先使用新格式 rules（QueryBuilder JSON）
     if (data.rules && data.rules.condition) {
       form.rules = data.rules;
     } else if (data.conditionGroups?.length) {
-      // 兼容旧格式：从 conditionGroups 构建 QueryBuilder JSON
       form.rules = convertLegacyToRuleJson(data);
     } else {
       form.rules = createGroupRule();
@@ -407,20 +406,14 @@
       form.actions = [createAction()];
     }
 
-    // 加载关联的应用列表
     if (form.mchNo) {
       loadAppList(form.mchNo);
     } else if (!isPlatform.value) {
-      // 商户用户编辑已有规则但没有 mchNo（兼容旧数据），加载全部应用
       loadAppListForMch();
     }
     handleAttributeChange();
   };
 
-  /**
-   * 将旧格式 conditionGroups 转换为 QueryBuilder JSON
-   * 同时将旧操作符名(eq/ne/gt等)转换为新操作符名(equal/not_equal/greater等)
-   */
   const convertLegacyToRuleJson = (data) => {
     const groups = data.conditionGroups || [];
     const outerLogic = data.conditionLogic || 'AND';
@@ -432,7 +425,6 @@
     const convertCondition = (c) => {
       const operator = normalizeOperator(c.operator);
       let value = c.fieldValue ?? '';
-      // in/not_in 操作符值应为数组
       if ((operator === 'in' || operator === 'not_in') && typeof value === 'string' && value.includes(',')) {
         value = value.split(',').map((v) => v.trim()).filter(Boolean);
       }
@@ -485,13 +477,13 @@
   const handleSave = () => {
     formRef.value?.validate?.((valid, invalidFields) => {
       if (!valid) {
-        scrollToFirstFormError(formRef, invalidFields, '.ele-drawer-body');
+        scrollToFirstFormError(formRef, invalidFields, '.el-drawer__body');
         return;
       }
       const error = validateConfig();
       if (error) {
-        EleMessage.error({ message: error, plain: true });
-        document.querySelector('.ele-drawer-body .rule-builder-section')?.scrollIntoView?.({
+        ElMessage.error(error);
+        document.querySelector('.el-drawer__body .rule-builder-section')?.scrollIntoView?.({
           behavior: 'smooth',
           block: 'center'
         });
@@ -515,20 +507,23 @@
         .then((msg) => {
           if (unmounted) return;
           loading.value = false;
-          EleMessage.success({ message: msg, plain: true });
-          closeModal();
-          props.onDone?.();
+          ElMessage.success(msg);
+          emit('done');
         })
         .catch((e) => {
           if (unmounted) return;
           loading.value = false;
-          EleMessage.error({ message: e.message, plain: true });
+          ElMessage.error(e.message);
         });
     });
   };
 
   const handleCancel = () => {
-    closeModal();
+    emit('close');
+  };
+
+  const handleClose = () => {
+    emit('close');
   };
 
   // 编辑模式：加载详情数据
@@ -543,7 +538,7 @@
       .catch((e) => {
         if (unmounted) return;
         detailLoading.value = false;
-        EleMessage.error({ message: e.message, plain: true });
+        ElMessage.error(e.message);
       });
   } else {
     handleAttributeChange();
@@ -551,6 +546,18 @@
 </script>
 
 <style lang="scss" scoped>
+  .drawer-body {
+    padding: 0 4px;
+    overflow-y: auto;
+  }
+
+  .drawer-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
   .edit-card {
     margin-bottom: 16px;
     border-radius: 12px;

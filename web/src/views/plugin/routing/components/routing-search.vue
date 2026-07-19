@@ -1,5 +1,5 @@
 <template>
-  <ele-card search-form>
+  <el-card shadow="never" class="search-card">
     <el-form label-width="84px" @keyup.enter="handleSearch" @submit.prevent="">
       <el-row :gutter="16">
         <el-col :lg="6" :md="12" :sm="12" :xs="24">
@@ -21,7 +21,7 @@
               start-placeholder="开始日期"
               end-placeholder="结束日期"
               value-format="YYYY-MM-DD"
-              class="ele-fluid"
+              style="width: 100%"
             />
           </el-form-item>
         </el-col>
@@ -60,23 +60,21 @@
         </el-col>
         <el-col :lg="6" :md="12" :sm="12" :xs="24">
           <el-form-item label-width="0px">
-            <btn-items
-              :wrap="false"
-              :items="[
-                { preset: 'search', onClick: () => handleSearch() },
-                { preset: 'reset', onClick: () => handleReset() }
-              ]"
-            />
+            <el-button type="primary" @click="handleSearch">
+              <el-icon><Search /></el-icon>搜索
+            </el-button>
+            <el-button @click="handleReset">重置</el-button>
           </el-form-item>
         </el-col>
       </el-row>
     </el-form>
-  </ele-card>
+  </el-card>
 </template>
 
 <script setup>
-  import { useFormData } from '@/utils/use-form-data';
-  import { useRuleSchema } from '@/components/RuleBuilder';
+  import { Search } from '@element-plus/icons-vue';
+  import { useFormData } from './user-form-data.js';
+  import { useRuleSchema } from '../RuleBuilder';
 
   const emit = defineEmits(['search']);
 
@@ -132,3 +130,9 @@
     handleSearch();
   };
 </script>
+
+<style lang="scss" scoped>
+  .search-card {
+    margin-bottom: 16px;
+  }
+</style>
