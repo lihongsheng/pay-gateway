@@ -1,16 +1,16 @@
 package enum
 
-type RuleAttribute int
+type RuleAttribute string
 
 const (
 	// RuleAttributeAll ALl
-	RuleAttributeAll RuleAttribute = iota
+	RuleAttributeAll RuleAttribute = "all"
 	// 指定账号
-	RuleAttributeSinglePayAccount
+	RuleAttributeSinglePayAccount = "singleAccount"
 	// 指定支付渠道 Wechat, Alipay, Lakala
-	RuleAttributeSinglePayChannel
+	RuleAttributeSinglePayChannel = "singleChannel"
 	// 指定支付方式 Wechat, Alipay
-	RuleAttributeSinglePayMethod
+	RuleAttributeSinglePayMethod = "singlePayMethod"
 )
 
 func AllRuleAttributes() []RuleAttribute {

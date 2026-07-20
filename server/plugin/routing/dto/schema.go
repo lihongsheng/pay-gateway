@@ -1,5 +1,7 @@
 package dto
 
+import "github.com/lihongsheng/pay-gateway/plugin/routing/enum"
+
 // FieldDefinition 条件字段定义
 type FieldDefinition struct {
 	ID         string           `json:"id"`
@@ -67,4 +69,8 @@ type RuleAccountContext struct {
 	AccountNo string  `json:"account_no,omitempty"`
 	DayAmount float64 `json:"day_amount,omitempty"`
 	DayOrder  int64   `json:"day_order,omitempty"`
+}
+
+type RuleAttributeRequest struct {
+	RuleAttributeType enum.RuleAttribute `json:"rule_attribute_type"`
 }

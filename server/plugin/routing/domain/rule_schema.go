@@ -133,7 +133,7 @@ func (s *RuleSchemaService) GetRuleAttributeOptions() []dto.AttributeOption {
 	for _, attr := range attrs {
 		result = append(result, dto.AttributeOption{
 			Label: attr.Label(),
-			Value: int(attr),
+			Value: attr,
 		})
 	}
 	return result

@@ -17,8 +17,10 @@ type Handler struct {
 	svc *svc.ServiceContext
 }
 
-var Job = &Handler{
-	svc: svc.ServiceContextApp,
+func NewJob() *Handler {
+	return &Handler{
+		svc: svc.ServiceContextApp,
+	}
 }
 
 // DeleteEventRecord 删除事件处理记录
